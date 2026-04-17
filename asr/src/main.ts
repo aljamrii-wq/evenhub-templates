@@ -97,24 +97,29 @@ function cleanup() {
   unsubscribe()
 }
 
+// Event routing, critical details:
+//   • Protobuf omits zero-value fields on the wire, so CLICK_EVENT (0)
+//     arrives as `undefined`. Always coalesce with `?? 0` before comparing.
+//   • Taps/double-taps/lifecycle come through `event.sysEvent`.
+//     Audio PCM frames come through `event.audioEvent` — separate branch.
 const unsubscribe = bridge.onEvenHubEvent(event => {
   const pcm = event.audioEvent?.audioPcm
   if (pcm) stt?.sendPcm(pcm)
 
-  const sys = event.sysEvent
-  if (!sys) return
-  const eventType = OsEventTypeList.fromJson(sys.eventType)
-  if (eventType === OsEventTypeList.DOUBLE_CLICK_EVENT) {
-    // Show the system exit confirmation dialog. The user can still cancel;
-    // if they confirm, SYSTEM_EXIT_EVENT fires and we clean up there.
-    bridge.shutDownPageContainer(1)
-    return
-  }
-  if (
-    eventType === OsEventTypeList.SYSTEM_EXIT_EVENT ||
-    eventType === OsEventTypeList.ABNORMAL_EXIT_EVENT
-  ) {
-    cleanup()
+  if (event.sysEvent) {
+    const type = event.sysEvent.eventType ?? 0
+    if (type === OsEventTypeList.DOUBLE_CLICK_EVENT) {
+      // System exit confirmation dialog. User can still cancel; confirm
+      // fires SYSTEM_EXIT_EVENT and we clean up there.
+      bridge.shutDownPageContainer(1)
+      return
+    }
+    if (
+      type === OsEventTypeList.SYSTEM_EXIT_EVENT ||
+      type === OsEventTypeList.ABNORMAL_EXIT_EVENT
+    ) {
+      cleanup()
+    }
   }
 })
 

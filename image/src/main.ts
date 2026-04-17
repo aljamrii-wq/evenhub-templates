@@ -7,7 +7,9 @@ import {
   TextContainerUpgrade,
   OsEventTypeList,
 } from '@evenrealities/even_hub_sdk'
-import { makeTestPattern } from './image/renderer'
+import { loadImageBytes } from './image/renderer'
+
+const SAMPLE_URL = `${import.meta.env.BASE_URL}sample.png`
 
 const bridge = await waitForEvenAppBridge()
 
@@ -92,9 +94,14 @@ async function pushFrame(bytes: Uint8Array) {
   await rendering
 }
 
-const pattern = makeTestPattern(IMG_W, IMG_H)
-await pushFrame(pattern)
-await setStatus('Tap to redraw · double-tap to exit')
+try {
+  const bytes = await loadImageBytes(SAMPLE_URL)
+  await pushFrame(bytes)
+  await setStatus('Tap to reload · double-tap to exit')
+} catch (err) {
+  console.error(err)
+  await setStatus(`Load failed: ${err instanceof Error ? err.message : String(err)}`)
+}
 
 let cleanedUp = false
 function cleanup() {
@@ -103,23 +110,30 @@ function cleanup() {
   unsubscribe()
 }
 
+// Event routing, critical details:
+//   • Protobuf omits zero-value fields on the wire, so CLICK_EVENT (0)
+//     arrives as `undefined`. Always coalesce with `?? 0` before comparing.
+//   • Taps/double-taps/lifecycle come through `event.sysEvent`.
+//     Scroll gestures come through `event.textEvent`. Never mix them.
 const unsubscribe = bridge.onEvenHubEvent(event => {
-  const sys = event.sysEvent
-  if (!sys) return
-  const eventType = OsEventTypeList.fromJson(sys.eventType)
-  if (eventType === OsEventTypeList.CLICK_EVENT) {
-    pushFrame(makeTestPattern(IMG_W, IMG_H)).catch(err => console.error(err))
-    return
-  }
-  if (eventType === OsEventTypeList.DOUBLE_CLICK_EVENT) {
-    bridge.shutDownPageContainer(1)
-    return
-  }
-  if (
-    eventType === OsEventTypeList.SYSTEM_EXIT_EVENT ||
-    eventType === OsEventTypeList.ABNORMAL_EXIT_EVENT
-  ) {
-    cleanup()
+  if (event.sysEvent) {
+    const type = event.sysEvent.eventType ?? 0
+    if (type === OsEventTypeList.CLICK_EVENT) {
+      loadImageBytes(SAMPLE_URL)
+        .then(pushFrame)
+        .catch(err => console.error(err))
+      return
+    }
+    if (type === OsEventTypeList.DOUBLE_CLICK_EVENT) {
+      bridge.shutDownPageContainer(1)
+      return
+    }
+    if (
+      type === OsEventTypeList.SYSTEM_EXIT_EVENT ||
+      type === OsEventTypeList.ABNORMAL_EXIT_EVENT
+    ) {
+      cleanup()
+    }
   }
 })
 
@@ -130,10 +144,9 @@ app.innerHTML = `
   <main style="margin:auto;padding:24px;max-width:640px;text-align:center;">
     <h1 style="font-size:18px;font-weight:600;margin:0 0 8px;">Image Demo</h1>
     <p style="color:#919191;font-size:14px;margin:0;">
-      Check the glasses — a test-pattern bitmap should render. Tap the
-      glasses to redraw, double-tap to exit. Swap
-      <code>makeTestPattern</code> for <code>loadImageBytes</code> in
-      <code>src/image/renderer.ts</code> to display real assets.
+      Check the glasses — <code>public/sample.png</code> should render.
+      Tap to reload, double-tap to exit. Drop a new PNG/JPG into
+      <code>public/</code> and point <code>SAMPLE_URL</code> at it.
     </p>
   </main>
 `

@@ -84,31 +84,41 @@ function cleanup() {
   unsubscribe()
 }
 
+// Event routing, critical details:
+//   • Protobuf omits zero-value fields on the wire, so CLICK_EVENT (0)
+//     arrives as `undefined`. Always coalesce with `?? 0` before comparing.
+//   • Scroll gestures (SCROLL_TOP/SCROLL_BOTTOM) route through
+//     `event.textEvent`. Taps/double-taps/lifecycle route through
+//     `event.sysEvent`. Check each branch separately.
 const unsubscribe = bridge.onEvenHubEvent(event => {
-  const sys = event.sysEvent
-  if (!sys) return
-  const eventType = OsEventTypeList.fromJson(sys.eventType)
-  if (eventType === OsEventTypeList.CLICK_EVENT) {
-    showPage(currentPage + 1).catch(err => console.error(err))
+  if (event.textEvent) {
+    const type = event.textEvent.eventType ?? 0
+    if (type === OsEventTypeList.SCROLL_TOP_EVENT) {
+      showPage(currentPage - 1).catch(err => console.error(err))
+      return
+    }
+    if (type === OsEventTypeList.SCROLL_BOTTOM_EVENT) {
+      showPage(currentPage + 1).catch(err => console.error(err))
+      return
+    }
     return
   }
-  if (eventType === OsEventTypeList.SCROLL_TOP_EVENT) {
-    showPage(currentPage - 1).catch(err => console.error(err))
-    return
-  }
-  if (eventType === OsEventTypeList.SCROLL_BOTTOM_EVENT) {
-    showPage(currentPage + 1).catch(err => console.error(err))
-    return
-  }
-  if (eventType === OsEventTypeList.DOUBLE_CLICK_EVENT) {
-    bridge.shutDownPageContainer(1)
-    return
-  }
-  if (
-    eventType === OsEventTypeList.SYSTEM_EXIT_EVENT ||
-    eventType === OsEventTypeList.ABNORMAL_EXIT_EVENT
-  ) {
-    cleanup()
+  if (event.sysEvent) {
+    const type = event.sysEvent.eventType ?? 0
+    if (type === OsEventTypeList.CLICK_EVENT) {
+      showPage(currentPage + 1).catch(err => console.error(err))
+      return
+    }
+    if (type === OsEventTypeList.DOUBLE_CLICK_EVENT) {
+      bridge.shutDownPageContainer(1)
+      return
+    }
+    if (
+      type === OsEventTypeList.SYSTEM_EXIT_EVENT ||
+      type === OsEventTypeList.ABNORMAL_EXIT_EVENT
+    ) {
+      cleanup()
+    }
   }
 })
 
