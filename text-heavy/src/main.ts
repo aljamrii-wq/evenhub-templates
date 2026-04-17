@@ -90,35 +90,33 @@ function cleanup() {
 //   • Scroll gestures (SCROLL_TOP/SCROLL_BOTTOM) route through
 //     `event.textEvent`. Taps/double-taps/lifecycle route through
 //     `event.sysEvent`. Check each branch separately.
+//   • Double-tap → `shutDownPageContainer(1)` is a root-level check: it
+//     must fire no matter which envelope the event arrives in, so users
+//     can always exit the app.
 const unsubscribe = bridge.onEvenHubEvent(event => {
-  if (event.textEvent) {
-    const type = event.textEvent.eventType ?? 0
-    if (type === OsEventTypeList.SCROLL_TOP_EVENT) {
-      showPage(currentPage - 1).catch(err => console.error(err))
-      return
-    }
-    if (type === OsEventTypeList.SCROLL_BOTTOM_EVENT) {
-      showPage(currentPage + 1).catch(err => console.error(err))
-      return
-    }
+  const sysType = event.sysEvent?.eventType ?? null
+  const textType = event.textEvent?.eventType ?? null
+
+  if (sysType === OsEventTypeList.DOUBLE_CLICK_EVENT || textType === OsEventTypeList.DOUBLE_CLICK_EVENT) {
+    bridge.shutDownPageContainer(1)
     return
   }
-  if (event.sysEvent) {
-    const type = event.sysEvent.eventType ?? 0
-    if (type === OsEventTypeList.CLICK_EVENT) {
-      showPage(currentPage + 1).catch(err => console.error(err))
-      return
-    }
-    if (type === OsEventTypeList.DOUBLE_CLICK_EVENT) {
-      bridge.shutDownPageContainer(1)
-      return
-    }
-    if (
-      type === OsEventTypeList.SYSTEM_EXIT_EVENT ||
-      type === OsEventTypeList.ABNORMAL_EXIT_EVENT
-    ) {
-      cleanup()
-    }
+
+  if (textType === OsEventTypeList.SCROLL_TOP_EVENT) {
+    showPage(currentPage - 1).catch(err => console.error(err))
+    return
+  }
+  if (textType === OsEventTypeList.SCROLL_BOTTOM_EVENT) {
+    showPage(currentPage + 1).catch(err => console.error(err))
+    return
+  }
+
+  if (sysType === OsEventTypeList.CLICK_EVENT) {
+    showPage(currentPage + 1).catch(err => console.error(err))
+    return
+  }
+  if (sysType === OsEventTypeList.SYSTEM_EXIT_EVENT || sysType === OsEventTypeList.ABNORMAL_EXIT_EVENT) {
+    cleanup()
   }
 })
 

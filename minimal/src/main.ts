@@ -35,18 +35,19 @@ console.log('Page created:', result === 0 ? 'success' : `failed (${result})`)
 //     arrives as `undefined`. Always coalesce with `?? 0` before comparing.
 //   • Taps/double-taps/lifecycle come through `event.sysEvent`.
 //     Scroll gestures come through `event.textEvent`. Never mix them.
+//   • Double-tap → `shutDownPageContainer(1)` is a root-level check: it
+//     must fire no matter which envelope the event arrives in, so users
+//     can always exit the app.
 const unsubscribe = bridge.onEvenHubEvent(event => {
-  if (event.sysEvent) {
-    const type = event.sysEvent.eventType ?? 0
-    if (type === OsEventTypeList.DOUBLE_CLICK_EVENT) {
-      bridge.shutDownPageContainer(1)
-      return
-    }
-    if (
-      type === OsEventTypeList.SYSTEM_EXIT_EVENT ||
-      type === OsEventTypeList.ABNORMAL_EXIT_EVENT
-    ) {
-      unsubscribe()
-    }
+  const sysType = event.sysEvent?.eventType ?? null
+  const textType = event.textEvent?.eventType ?? null
+
+  if (sysType === OsEventTypeList.DOUBLE_CLICK_EVENT || textType === OsEventTypeList.DOUBLE_CLICK_EVENT) {
+    bridge.shutDownPageContainer(1)
+    return
+  }
+
+  if (sysType === OsEventTypeList.SYSTEM_EXIT_EVENT || sysType === OsEventTypeList.ABNORMAL_EXIT_EVENT) {
+    unsubscribe()
   }
 })

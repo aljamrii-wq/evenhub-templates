@@ -102,24 +102,24 @@ function cleanup() {
 //     arrives as `undefined`. Always coalesce with `?? 0` before comparing.
 //   • Taps/double-taps/lifecycle come through `event.sysEvent`.
 //     Audio PCM frames come through `event.audioEvent` — separate branch.
+//   • Double-tap → `shutDownPageContainer(1)` is a root-level check: it
+//     must fire no matter which envelope the event arrives in, so users
+//     can always exit the app. System exit confirmation dialog appears;
+//     SYSTEM_EXIT_EVENT fires on confirm and we clean up there.
 const unsubscribe = bridge.onEvenHubEvent(event => {
   const pcm = event.audioEvent?.audioPcm
   if (pcm) stt?.sendPcm(pcm)
 
-  if (event.sysEvent) {
-    const type = event.sysEvent.eventType ?? 0
-    if (type === OsEventTypeList.DOUBLE_CLICK_EVENT) {
-      // System exit confirmation dialog. User can still cancel; confirm
-      // fires SYSTEM_EXIT_EVENT and we clean up there.
-      bridge.shutDownPageContainer(1)
-      return
-    }
-    if (
-      type === OsEventTypeList.SYSTEM_EXIT_EVENT ||
-      type === OsEventTypeList.ABNORMAL_EXIT_EVENT
-    ) {
-      cleanup()
-    }
+  const sysType = event.sysEvent?.eventType ?? null
+  const textType = event.textEvent?.eventType ?? null
+
+  if (sysType === OsEventTypeList.DOUBLE_CLICK_EVENT || textType === OsEventTypeList.DOUBLE_CLICK_EVENT) {
+    bridge.shutDownPageContainer(1)
+    return
+  }
+
+  if (sysType === OsEventTypeList.SYSTEM_EXIT_EVENT || sysType === OsEventTypeList.ABNORMAL_EXIT_EVENT) {
+    cleanup()
   }
 })
 
