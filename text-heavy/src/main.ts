@@ -119,10 +119,10 @@ app.innerHTML = `
   <main style="margin:auto;padding:24px;max-width:680px;box-sizing:border-box;">
     <header style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
       <h1 style="font-size:18px;font-weight:600;margin:0;">Text-Heavy Reader</h1>
-      <span id="pageCount" style="font-size:12px;color:#8a8a8a;"></span>
+      <span id="pageCount" style="font-size:12px;color:#919191;"></span>
     </header>
-    <pre id="mirror" style="background:#141414;border:1px solid #262626;border-radius:12px;padding:20px;font-size:15px;line-height:1.55;white-space:pre-wrap;word-break:break-word;color:#e6e6e6;margin:0;"></pre>
-    <footer style="font-size:12px;color:#707070;text-align:center;margin-top:16px;">
+    <pre id="mirror" style="background:#2E2E2E;border:1px solid #3E3E3E;border-radius:12px;padding:20px;font-size:15px;line-height:1.55;white-space:pre-wrap;word-break:break-word;color:#E5E5E5;margin:0;"></pre>
+    <footer style="font-size:12px;color:#7B7B7B;text-align:center;margin-top:16px;">
       Tap glasses: next page · swipe up: previous · double-tap: exit
     </footer>
   </main>

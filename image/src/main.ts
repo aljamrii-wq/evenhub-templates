@@ -2,6 +2,7 @@ import {
   waitForEvenAppBridge,
   TextContainerProperty,
   ImageContainerProperty,
+  ImageRawDataUpdate,
   CreateStartUpPageContainer,
   TextContainerUpgrade,
   OsEventTypeList,
@@ -76,11 +77,13 @@ async function setStatus(text: string) {
 let rendering: Promise<unknown> = Promise.resolve()
 async function pushFrame(bytes: Uint8Array) {
   rendering = rendering.then(async () => {
-    const result = await bridge.updateImageRawData({
-      containerID: 3,
-      containerName: 'frame',
-      imageData: bytes,
-    })
+    const result = await bridge.updateImageRawData(
+      new ImageRawDataUpdate({
+        containerID: 3,
+        containerName: 'frame',
+        imageData: bytes,
+      }),
+    )
     if (result !== 'success') {
       await setStatus(`Render: ${result}`)
       console.error('updateImageRawData:', result)
@@ -126,7 +129,7 @@ const app = document.querySelector<HTMLDivElement>('#app')!
 app.innerHTML = `
   <main style="margin:auto;padding:24px;max-width:640px;text-align:center;">
     <h1 style="font-size:18px;font-weight:600;margin:0 0 8px;">Image Demo</h1>
-    <p style="color:#8a8a8a;font-size:14px;margin:0;">
+    <p style="color:#919191;font-size:14px;margin:0;">
       Check the glasses — a test-pattern bitmap should render. Tap the
       glasses to redraw, double-tap to exit. Swap
       <code>makeTestPattern</code> for <code>loadImageBytes</code> in
