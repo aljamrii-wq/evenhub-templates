@@ -8,9 +8,16 @@ import {
 import { paginate } from './paginate'
 import { SAMPLE_TEXT } from './sample'
 
-const PAGE_CHAR_BUDGET = 450
+// Body container geometry. Inner box (width/height minus padding and border)
+// is what pretext measures against, so keep these in sync if you resize.
+const BODY_W = 576
+const BODY_H = 240
+const BODY_PAD = 4
+const BODY_BORDER = 0
+const INNER_W = BODY_W - 2 * (BODY_PAD + BODY_BORDER)
+const INNER_H = BODY_H - 2 * (BODY_PAD + BODY_BORDER)
 
-const pages = paginate(SAMPLE_TEXT, PAGE_CHAR_BUDGET)
+const pages = paginate(SAMPLE_TEXT, { width: INNER_W, height: INNER_H })
 let currentPage = 0
 
 const bridge = await waitForEvenAppBridge()
@@ -18,11 +25,11 @@ const bridge = await waitForEvenAppBridge()
 const body = new TextContainerProperty({
   xPosition: 0,
   yPosition: 0,
-  width: 576,
-  height: 240,
-  borderWidth: 0,
+  width: BODY_W,
+  height: BODY_H,
+  borderWidth: BODY_BORDER,
   borderColor: 5,
-  paddingLength: 4,
+  paddingLength: BODY_PAD,
   containerID: 1,
   containerName: 'body',
   content: pages[0] ?? '(empty)',
