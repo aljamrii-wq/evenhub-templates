@@ -47,3 +47,46 @@ export interface ModeContext {
   confidence: number;
   reason: string;
 }
+
+/** Engine API response types */
+
+export interface EngineHealthResponse {
+  status: 'ok' | 'degraded' | 'down';
+  version: string;
+  uptime: number;
+  modes: AuraMode[];
+}
+
+export interface EngineRenderRequest {
+  text: string;
+  lang: Language;
+  size?: number;
+  width?: number;
+  height?: number;
+}
+
+export interface EngineRenderResponse {
+  /** Raw pixel data as base64-encoded bytes */
+  data: string;
+  width: number;
+  height: number;
+  format: 'greyscale' | '4bit';
+}
+
+export interface EngineModeResponse {
+  mode: AuraMode;
+  confidence: number;
+  reason: string;
+}
+
+export interface EngineTranslateRequest {
+  text: string;
+  from: Language;
+  to: Language;
+}
+
+export interface EngineTranslateResponse {
+  text: string;
+  from: Language;
+  to: Language;
+}
