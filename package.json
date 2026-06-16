@@ -1,0 +1,8 @@
+{
+  "name": "aura-monorepo",
+  "private": true,
+  "workspaces": [
+    "aura-sdk",
+    "minimal"
+  ]
+}

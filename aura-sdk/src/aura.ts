@@ -11,7 +11,7 @@ import {
   ImageRawDataUpdate,
   ImageContainerProperty,
   TextContainerProperty,
-  type DeviceInfo,
+  OsEventTypeList,
 } from '@evenrealities/even_hub_sdk';
 import { ArabicRenderer } from './arabic';
 import { GestureEngine } from './gestures';
@@ -40,11 +40,16 @@ export class Aura {
   // Container tracking
   private containerId: number | null = null;
 
+  // Cleanup handles
+  private eventUnsubscribe: (() => void) | null = null;
+  private disposed = false;
+
   // Callbacks
   private onNodCb: (() => void) | null = null;
   private onShakeCb: (() => void) | null = null;
   private onModeChangeCb: ((mode: ModeContext) => void) | null = null;
   private onMessageCb: ((msg: HermesMessage) => void) | null = null;
+  private onExitCb: (() => void) | null = null;
 
   constructor(config: Partial<AuraConfig> = {}) {
     this.config = { ...DEFAULTS, ...config };
@@ -56,6 +61,7 @@ export class Aura {
 
   /** Initialize: connect to Even bridge + Hermes */
   async init(): Promise<void> {
+    if (this.disposed) throw new Error('Aura has been disposed');
     this.bridge = await waitForEvenAppBridge();
 
     // Create startup page container (required before any display operations)
@@ -83,6 +89,40 @@ export class Aura {
       throw new Error(`Failed to create page container: ${result}`);
     }
 
+    // Always register OS event handling (double-tap exit, system lifecycle)
+    this.eventUnsubscribe = this.bridge.onEvenHubEvent((event: any) => {
+      const sysType = event.sysEvent?.eventType ?? null;
+      const textType = event.textEvent?.eventType ?? null;
+
+      // Double-tap exits the app from any event envelope
+      if (sysType === OsEventTypeList.DOUBLE_CLICK_EVENT ||
+          textType === OsEventTypeList.DOUBLE_CLICK_EVENT) {
+        this.onExitCb?.();
+        this.bridge?.shutDownPageContainer(1);
+        return;
+      }
+
+      // System lifecycle events — clean up
+      if (sysType === OsEventTypeList.SYSTEM_EXIT_EVENT ||
+          sysType === OsEventTypeList.ABNORMAL_EXIT_EVENT) {
+        this.dispose();
+        return;
+      }
+
+      // IMU gesture detection
+      if (this.config.gestures) {
+        const imu = event.sysEvent?.imuData;
+        if (imu) {
+          const x = imu.x ?? 0;
+          const y = imu.y ?? 0;
+          const z = imu.z ?? 0;
+          const gesture = this.gestures.process(x, y, z);
+          if (gesture.type === 'nod') this.onNodCb?.();
+          if (gesture.type === 'shake') this.onShakeCb?.();
+        }
+      }
+    });
+
     // Mode detection from device + time
     if (this.config.mode === 'auto') {
       const info = await this.bridge.getDeviceInfo();
@@ -99,20 +139,9 @@ export class Aura {
       this.modes.onChange((ctx) => this.onModeChangeCb?.(ctx));
     }
 
-    // IMU gesture detection
+    // Enable IMU if gesture detection is on
     if (this.config.gestures) {
       await this.bridge.imuControl(true, 500);
-      this.bridge.onEvenHubEvent((event) => {
-        const imu = event.sysEvent?.imuData;
-        if (imu) {
-          const x = imu.x ?? 0;
-          const y = imu.y ?? 0;
-          const z = imu.z ?? 0;
-          const gesture = this.gestures.process(x, y, z);
-          if (gesture.type === 'nod') this.onNodCb?.();
-          if (gesture.type === 'shake') this.onShakeCb?.();
-        }
-      });
     }
 
     // Hermes connection
@@ -120,6 +149,29 @@ export class Aura {
     this.hermes.onMessage((msg) => this.onMessageCb?.(msg));
 
     this.ready = true;
+  }
+
+  /** Dispose all resources — stops intervals, disconnects WebSocket, cleans up bridge */
+  dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+
+    // Stop mode detection interval
+    this.modes.stop();
+
+    // Disconnect Hermes WebSocket
+    this.hermes.disconnect();
+
+    // Unsubscribe from Even Hub events
+    this.eventUnsubscribe?.();
+    this.eventUnsubscribe = null;
+
+    // Disable IMU
+    if (this.bridge && this.config.gestures) {
+      this.bridge.imuControl(false, 500).catch(() => {});
+    }
+
+    this.ready = false;
   }
 
   /** Show text on glasses — auto-detects language, renders Arabic as image if needed */
@@ -163,8 +215,7 @@ export class Aura {
   async alert(title: string, body: string, lang?: Language): Promise<void> {
     const msg: HermesMessage = {
       type: 'alert',
-      text: `${title}
-${body}`,
+      text: `${title}\n${body}`,
       lang: lang || this.config.lang,
       mode: this.modes.current,
     };
@@ -177,6 +228,9 @@ ${body}`,
   onShake(cb: () => void): void { this.onShakeCb = cb; }
   onModeChange(cb: (mode: ModeContext) => void): void { this.onModeChangeCb = cb; }
   onMessage(cb: (msg: HermesMessage) => void): void { this.onMessageCb = cb; }
+
+  /** Register callback for app exit (double-tap or system-initiated) */
+  onExit(cb: () => void): void { this.onExitCb = cb; }
 
   // --- Properties ---
 
