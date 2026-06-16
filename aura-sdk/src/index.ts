@@ -10,6 +10,7 @@
 
 export { Aura } from './aura';
 export { ArabicRenderer } from './arabic';
+export { EngineClient } from './engine';
 export { GestureEngine } from './gestures';
 export { HermesBridge } from './hermes';
 export { ModeDetector } from './modes';
@@ -17,6 +18,12 @@ export { ModeDetector } from './modes';
 export type {
   AuraConfig,
   AuraMode,
+  EngineHealthResponse,
+  EngineModeResponse,
+  EngineRenderRequest,
+  EngineRenderResponse,
+  EngineTranslateRequest,
+  EngineTranslateResponse,
   GestureType,
   HermesMessage,
   Language,

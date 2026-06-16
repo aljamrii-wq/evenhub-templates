@@ -3,18 +3,23 @@
  * 
  * Works by sending text to aura-engine (Python) which uses PIL + arabic_reshaper + python-bidi.
  * The engine returns raw 4-bit greyscale pixel data suitable for updateImageRawData.
+ * 
+ * If an EngineClient is provided, it uses the typed API; otherwise falls back to raw fetch.
  */
 
 import type { Language, RenderResult } from './types';
+import type { EngineClient } from './engine';
 
 const ENGINE_URL = 'https://hermes.aljamrigroup.com/aura/render';
 
 export class ArabicRenderer {
   private lang: Language;
   private cache = new Map<string, RenderResult>();
+  private engineClient: EngineClient | null = null;
 
-  constructor(lang: Language) {
+  constructor(lang: Language, engineClient?: EngineClient) {
     this.lang = lang;
+    this.engineClient = engineClient || null;
   }
 
   /** Render text as greyscale pixels for G2 display */
@@ -23,6 +28,27 @@ export class ArabicRenderer {
     const cached = this.cache.get(key);
     if (cached) return cached.pixels;
 
+    if (this.engineClient) {
+      const result = await this.engineClient.render({
+        text,
+        lang: this.lang,
+        size: size || 24,
+        width: 576,
+        height: 288,
+      });
+
+      const binary = atob(result.data);
+      const pixels = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) {
+        pixels[i] = binary.charCodeAt(i);
+      }
+
+      this.cache.set(key, { pixels, width: result.width, height: result.height });
+      this.evictCache();
+      return pixels;
+    }
+
+    // Fallback: raw fetch
     const resp = await fetch(ENGINE_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -36,7 +62,6 @@ export class ArabicRenderer {
     });
 
     if (!resp.ok) {
-      // Fallback: show as transliterated text
       throw new Error(`Render failed: ${resp.status}`);
     }
 
@@ -44,14 +69,17 @@ export class ArabicRenderer {
     const pixels = new Uint8Array(buffer);
 
     this.cache.set(key, { pixels, width: 576, height: 288 });
+    this.evictCache();
 
-    // Limit cache size
+    return pixels;
+  }
+
+  /** Evict oldest cache entry when over limit */
+  private evictCache(): void {
     if (this.cache.size > 100) {
       const first = this.cache.keys().next().value;
       if (first) this.cache.delete(first);
     }
-
-    return pixels;
   }
 
   /** Check if a language needs image-based rendering */

@@ -14,6 +14,7 @@ import {
   type DeviceInfo,
 } from '@evenrealities/even_hub_sdk';
 import { ArabicRenderer } from './arabic';
+import { EngineClient } from './engine';
 import { GestureEngine } from './gestures';
 import { HermesBridge } from './hermes';
 import { ModeDetector } from './modes';
@@ -48,7 +49,7 @@ export class Aura {
 
   constructor(config: Partial<AuraConfig> = {}) {
     this.config = { ...DEFAULTS, ...config };
-    this.arabic = new ArabicRenderer(this.config.lang);
+    this.arabic = new ArabicRenderer(this.config.lang, new EngineClient(this.config.hermesUrl.replace('wss://', 'https://')));
     this.gestures = new GestureEngine();
     this.hermes = new HermesBridge(this.config.hermesUrl);
     this.modes = new ModeDetector();

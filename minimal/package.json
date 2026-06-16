@@ -11,6 +11,7 @@
     "simulate": "evenhub-simulator http://localhost:5173"
   },
   "dependencies": {
+    "@aljamri/aura-sdk": "file:../aura-sdk",
     "@evenrealities/even_hub_sdk": "^0.0.10"
   },
   "devDependencies": {

@@ -1,18 +1,16 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" dir="ltr">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no" />
-    <title>Even Hub Minimal</title>
+    <title>Aura SDK — Minimal Demo</title>
     <style>
       html, body {
         margin: 0;
         height: 100%;
-        /* ER brand dark-theme surface (#232323) + Neutral-200 text (#E5E5E5). */
         background: #232323;
         color: #E5E5E5;
         font: 14px/1.4 -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-        /* Kill WebView zoom + iOS auto-sizing + rubber-band scroll. */
         touch-action: manipulation;
         -webkit-text-size-adjust: 100%;
         overscroll-behavior: none;
@@ -25,11 +23,16 @@
         padding: 24px;
         box-sizing: border-box;
         text-align: center;
+        flex-direction: column;
+        gap: 12px;
       }
+      h2 { margin: 0 0 8px 0; font-size: 18px; }
+      p { margin: 4px 0; }
+      .arabic { font-family: 'Noto Naskh Arabic', 'Scheherazade New', serif; font-size: 18px; direction: rtl; }
     </style>
   </head>
   <body>
-    <div id="app">Companion app is running. Check the glasses display.</div>
+    <div id="app">Loading Aura SDK...</div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
