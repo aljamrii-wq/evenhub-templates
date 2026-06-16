@@ -40,6 +40,11 @@ class ArabicBitmapRenderer:
                  font_size: int = DEFAULT_FONT_SIZE, font_path: str | None = None):
         if width <= 0 or height <= 0:
             raise ValueError(f"Invalid dimensions: {width}x{height}")
+        # Even G2 display packs 2 pixels per byte — total pixels must be even
+        if (width * height) % 2 != 0:
+            raise ValueError(
+                f"Total pixels (width x height) must be even, got {width}x{height} = {width * height}"
+            )
         if font_size <= 0 or font_size > self.MAX_FONT_SIZE:
             raise ValueError(
                 f"font_size must be between 1 and {self.MAX_FONT_SIZE}, got {font_size}"

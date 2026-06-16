@@ -142,3 +142,20 @@ class TestAuraWebSocketBridge:
         msg = AuraMessage(type=MessageType.QUERY, payload="status", mode=Mode.FLYDUBAI)
         resp = await bridge.handle_message(msg)
         assert resp.type == ResponseType.TEXT
+
+    @pytest.mark.asyncio
+    async def test_payload_size_limit(self):
+        """Payloads exceeding max_message_bytes should be rejected."""
+        bridge = AuraWebSocketBridge(hermes_command="echo", max_message_bytes=10)
+        msg = AuraMessage(type=MessageType.QUERY, payload="x" * 20, mode=Mode.PERSONAL)
+        resp = await bridge.handle_message(msg)
+        assert resp.type == ResponseType.ERROR
+        assert "too large" in resp.payload.lower()
+
+    @pytest.mark.asyncio
+    async def test_payload_within_limit_accepted(self):
+        """Payloads within max_message_bytes should be accepted."""
+        bridge = AuraWebSocketBridge(hermes_command="echo", max_message_bytes=1024)
+        msg = AuraMessage(type=MessageType.QUERY, payload="small payload", mode=Mode.PERSONAL)
+        resp = await bridge.handle_message(msg)
+        assert resp.type == ResponseType.TEXT

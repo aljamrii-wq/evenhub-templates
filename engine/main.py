@@ -14,10 +14,11 @@ Run:
 import base64
 import logging
 import os
+import re
 from contextlib import asynccontextmanager
 from typing import Optional
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
@@ -31,12 +32,18 @@ from session_store import SessionStore
 
 logger = logging.getLogger(__name__)
 
+# Maximum WebSocket message payload size (64KB default)
+MAX_WS_MESSAGE_BYTES = int(os.environ.get('AURA_MAX_WS_MESSAGE_BYTES', '65536'))
+# Shared secret for WebSocket auth (query param: ?token=...)
+# When set, clients must provide matching token. When empty, only localhost allowed.
+AURA_AUTH_TOKEN = os.environ.get('AURA_AUTH_TOKEN', '')
+
 # --- Lifespan ---
 
 renderer = ArabicBitmapRenderer()
 mode_detector = ModeDetector()
 store = SessionStore()
-bridge = AuraWebSocketBridge(renderer=renderer)
+bridge = AuraWebSocketBridge(renderer=renderer, max_message_bytes=MAX_WS_MESSAGE_BYTES)
 
 
 @asynccontextmanager
@@ -106,7 +113,16 @@ async def render_text(req: RenderRequest):
     Returns a base64-encoded packed 4-bit grayscale bitmap
     (576x288 pixels, 2 pixels per byte).
     """
-    bitmap_bytes = renderer.render(req.text)
+    # Use a renderer with the requested font_size for this call
+    if req.font_size != renderer.font_size:
+        sized_renderer = ArabicBitmapRenderer(
+            width=renderer.width,
+            height=renderer.height,
+            font_size=req.font_size,
+        )
+        bitmap_bytes = sized_renderer.render(req.text)
+    else:
+        bitmap_bytes = renderer.render(req.text)
     encoded = base64.b64encode(bitmap_bytes).decode("ascii")
     return RenderResponse(payload=encoded)
 
@@ -127,18 +143,53 @@ async def detect_mode(req: ModeRequest):
     )
 
 
+def _validate_ws_origin(websocket: WebSocket) -> None:
+    """Validate the WebSocket connection is authorized.
+
+    If AURA_AUTH_TOKEN is set, requires ?token=<token> query parameter.
+    Otherwise, only allows connections from localhost/127.0.0.1.
+    """
+    if AURA_AUTH_TOKEN:
+        token = websocket.query_params.get("token", "")
+        if token != AURA_AUTH_TOKEN:
+            raise HTTPException(status_code=403, detail="Invalid or missing auth token")
+    else:
+        # Localhost-only when no auth token configured
+        host = websocket.client.host if websocket.client else ""
+        if host not in ("127.0.0.1", "::1", "localhost"):
+            raise HTTPException(status_code=403, detail="Remote connections require AURA_AUTH_TOKEN")
+
+
 @app.websocket("/ws/aura")
 async def aura_websocket(websocket: WebSocket):
     """WebSocket endpoint for Aura SDK clients.
+
+    Auth: provide ?token=<AURA_AUTH_TOKEN> if AURA_AUTH_TOKEN is set.
+          Otherwise only localhost connections are allowed.
 
     Accepts JSON AuraMessage frames and returns AuraResponse frames.
     Message format:
         {"type": "query"|"alert"|"mode_switch", "payload": "...", "mode": "personal"}
     """
+    # Validate auth/origin before accepting
+    try:
+        _validate_ws_origin(websocket)
+    except HTTPException:
+        await websocket.close(code=4003, reason="Forbidden")
+        return
+
     await websocket.accept()
     try:
         while True:
             raw = await websocket.receive_text()
+            if len(raw.encode("utf-8")) > MAX_WS_MESSAGE_BYTES:
+                err = AuraResponse(
+                    type=ResponseType.ERROR,
+                    payload=f"Message too large: max {MAX_WS_MESSAGE_BYTES} bytes",
+                )
+                await websocket.send_text(err.to_json())
+                continue
+
             try:
                 msg = AuraMessage.from_json(raw)
                 response = await bridge.handle_message(msg)
@@ -160,7 +211,7 @@ async def aura_websocket(websocket: WebSocket):
 
 if __name__ == "__main__":
     import uvicorn
-    host = os.environ.get("AURA_HOST", "0.0.0.0")
+    host = os.environ.get("AURA_HOST", "127.0.0.1")
     port = int(os.environ.get("AURA_PORT", "8000"))
     log_level = os.environ.get("AURA_LOG_LEVEL", "info")
     logging.basicConfig(level=log_level.upper())

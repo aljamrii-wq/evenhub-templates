@@ -29,6 +29,14 @@ class TestArabicBitmapRenderer:
         with pytest.raises(ValueError):
             ArabicBitmapRenderer(width=576, height=0)
 
+    def test_odd_total_pixels_raises(self):
+        """Total pixels must be even (2 pixels per packed byte)."""
+        with pytest.raises(ValueError, match="must be even"):
+            ArabicBitmapRenderer(width=3, height=3)  # 9 pixels, odd
+        # Even total pixels should work fine
+        r = ArabicBitmapRenderer(width=2, height=3)  # 6 pixels, even
+        assert r.width == 2
+
     # --- basic rendering ---
 
     def test_render_english_returns_bytes(self, renderer):

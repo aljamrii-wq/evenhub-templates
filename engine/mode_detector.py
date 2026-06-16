@@ -6,6 +6,7 @@ based on time of day, device info, and recent interactions.
 
 import json
 import logging
+import re
 from datetime import time, datetime
 from dataclasses import dataclass, field
 from enum import Enum
@@ -115,17 +116,21 @@ class ModeDetector:
         return self._detect_from_time(current_time)
 
     def _detect_from_keywords(self, interactions: list[str]) -> Mode | None:
-        """Detect mode from interaction keywords."""
+        """Detect mode from interaction keywords using word-boundary matching."""
         flydubai_score = 0
         aljamri_score = 0
 
         for text in interactions:
             text_lower = text.lower()
             for kw in FLYDUBAI_KEYWORDS:
-                if kw in text_lower:
+                # Use word-boundary matching to avoid false matches
+                # e.g. "pr" won't match "prepare" or "April"
+                pattern = re.escape(kw)
+                if re.search(r'\b' + pattern + r'\b', text_lower):
                     flydubai_score += 1
             for kw in ALJAMRI_KEYWORDS:
-                if kw in text_lower:
+                pattern = re.escape(kw)
+                if re.search(r'\b' + pattern + r'\b', text_lower):
                     aljamri_score += 1
 
         if flydubai_score > aljamri_score and flydubai_score > 0:
@@ -135,12 +140,12 @@ class ModeDetector:
         return None
 
     def _detect_from_location(self, location: str) -> Mode | None:
-        """Detect mode from device location string."""
+        """Detect mode from device location string using word-boundary matching."""
         for kw in HOME_LOCATION_KEYWORDS:
-            if kw in location:
+            if re.search(r'\b' + re.escape(kw) + r'\b', location):
                 return Mode.PERSONAL
         for kw in OFFICE_LOCATION_KEYWORDS:
-            if kw in location:
+            if re.search(r'\b' + re.escape(kw) + r'\b', location):
                 return Mode.FLYDUBAI
         return None
 

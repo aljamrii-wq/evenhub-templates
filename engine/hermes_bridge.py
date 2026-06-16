@@ -79,17 +79,26 @@ class AuraWebSocketBridge:
         hermes_command: str | None = None,
         timeout: int = 30,
         renderer: ArabicBitmapRenderer | None = None,
+        max_message_bytes: int = 65536,
     ):
         self.hermes_command = hermes_command or os.environ.get(
             "HERMES_COMMAND", "hermes"
         )
         self.timeout = timeout
         self.renderer = renderer or ArabicBitmapRenderer()
+        self.max_message_bytes = max_message_bytes
         self.context: dict = {}
 
     async def handle_message(self, msg: AuraMessage) -> AuraResponse:
         """Route an incoming Aura message to the appropriate handler."""
         try:
+            # Validate payload size
+            if len(msg.payload.encode("utf-8")) > self.max_message_bytes:
+                return AuraResponse(
+                    type=ResponseType.ERROR,
+                    payload=f"Payload too large: max {self.max_message_bytes} bytes",
+                )
+
             if msg.type == MessageType.QUERY:
                 return await self._handle_query(msg)
             elif msg.type == MessageType.ALERT:
