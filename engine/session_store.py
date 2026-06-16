@@ -7,10 +7,14 @@ Stores:
 - Recent messages (role, content, mode, timestamp)
 - Mode change history (from_mode, to_mode, reason, timestamp)
 - User preferences (key-value pairs)
+
+Thread-safety: all public methods acquire a threading.Lock to prevent
+concurrent write errors on the shared SQLite connection.
 """
 
 import os
 import sqlite3
+import threading
 import time
 import logging
 from typing import Any
@@ -31,6 +35,7 @@ class SessionStore:
             db_path = os.environ.get("AURA_DB_PATH", ":memory:")
         self.db_path = db_path
         self._conn = sqlite3.connect(db_path, check_same_thread=False)
+        self._lock = threading.Lock()
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA foreign_keys=ON")
@@ -72,8 +77,9 @@ class SessionStore:
 
     def close(self) -> None:
         """Close the database connection."""
-        if self._conn:
-            self._conn.close()
+        with self._lock:
+            if self._conn:
+                self._conn.close()
 
     # --- Messages ---
 
@@ -83,33 +89,37 @@ class SessionStore:
         """Add a message to the store. Returns the row ID."""
         if content is None:
             content = ""
-        cursor = self._conn.execute(
-            "INSERT INTO messages (role, content, mode, created_at) VALUES (?, ?, ?, ?)",
-            (role, content, mode, time.time()),
-        )
-        self._conn.commit()
-        return cursor.lastrowid
+        with self._lock:
+            cursor = self._conn.execute(
+                "INSERT INTO messages (role, content, mode, created_at) VALUES (?, ?, ?, ?)",
+                (role, content, mode, time.time()),
+            )
+            self._conn.commit()
+            return cursor.lastrowid
 
     def get_recent_messages(self, limit: int = 20) -> list[dict]:
         """Get the most recent messages, newest first."""
-        rows = self._conn.execute(
-            "SELECT role, content, mode, created_at "
-            "FROM messages ORDER BY created_at DESC LIMIT ?",
-            (limit,),
-        ).fetchall()
-        return [dict(r) for r in rows]
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT role, content, mode, created_at "
+                "FROM messages ORDER BY created_at DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+            return [dict(r) for r in rows]
 
     def message_count(self) -> int:
         """Return total message count."""
-        row = self._conn.execute(
-            "SELECT COUNT(*) as cnt FROM messages"
-        ).fetchone()
-        return row["cnt"]
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT COUNT(*) as cnt FROM messages"
+            ).fetchone()
+            return row["cnt"]
 
     def clear_messages(self) -> None:
         """Delete all messages."""
-        self._conn.execute("DELETE FROM messages")
-        self._conn.commit()
+        with self._lock:
+            self._conn.execute("DELETE FROM messages")
+            self._conn.commit()
 
     # --- Mode History ---
 
@@ -117,62 +127,70 @@ class SessionStore:
         self, from_mode: str | None, to_mode: str, reason: str = ""
     ) -> int:
         """Record a mode transition. Returns the row ID."""
-        cursor = self._conn.execute(
-            "INSERT INTO mode_history (from_mode, to_mode, reason, created_at) VALUES (?, ?, ?, ?)",
-            (from_mode, to_mode, reason, time.time()),
-        )
-        self._conn.commit()
-        return cursor.lastrowid
+        with self._lock:
+            cursor = self._conn.execute(
+                "INSERT INTO mode_history (from_mode, to_mode, reason, created_at) VALUES (?, ?, ?, ?)",
+                (from_mode, to_mode, reason, time.time()),
+            )
+            self._conn.commit()
+            return cursor.lastrowid
 
     def get_mode_history(self, limit: int = 20) -> list[dict]:
         """Get recent mode transitions, newest first."""
-        rows = self._conn.execute(
-            "SELECT from_mode, to_mode, reason, created_at "
-            "FROM mode_history ORDER BY created_at DESC LIMIT ?",
-            (limit,),
-        ).fetchall()
-        return [dict(r) for r in rows]
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT from_mode, to_mode, reason, created_at "
+                "FROM mode_history ORDER BY created_at DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+            return [dict(r) for r in rows]
 
     def get_last_mode(self) -> str | None:
         """Get the most recent mode, or None if no history."""
-        row = self._conn.execute(
-            "SELECT to_mode FROM mode_history ORDER BY created_at DESC LIMIT 1"
-        ).fetchone()
-        return row["to_mode"] if row else None
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT to_mode FROM mode_history ORDER BY created_at DESC LIMIT 1"
+            ).fetchone()
+            return row["to_mode"] if row else None
 
     def clear_mode_history(self) -> None:
         """Delete all mode history."""
-        self._conn.execute("DELETE FROM mode_history")
-        self._conn.commit()
+        with self._lock:
+            self._conn.execute("DELETE FROM mode_history")
+            self._conn.commit()
 
     # --- Preferences ---
 
     def set_preference(self, key: str, value: str) -> None:
         """Set a user preference (upsert)."""
-        self._conn.execute(
-            "INSERT OR REPLACE INTO preferences (key, value, updated_at) "
-            "VALUES (?, ?, strftime('%s','now'))",
-            (key, value),
-        )
-        self._conn.commit()
+        with self._lock:
+            self._conn.execute(
+                "INSERT OR REPLACE INTO preferences (key, value, updated_at) "
+                "VALUES (?, ?, strftime('%s','now'))",
+                (key, value),
+            )
+            self._conn.commit()
 
     def get_preference(self, key: str) -> str | None:
         """Get a preference value, or None if not set."""
-        row = self._conn.execute(
-            "SELECT value FROM preferences WHERE key = ?", (key,)
-        ).fetchone()
-        return row["value"] if row else None
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT value FROM preferences WHERE key = ?", (key,)
+            ).fetchone()
+            return row["value"] if row else None
 
     def get_all_preferences(self) -> dict[str, str]:
         """Get all preferences as a dict."""
-        rows = self._conn.execute(
-            "SELECT key, value FROM preferences"
-        ).fetchall()
-        return {r["key"]: r["value"] for r in rows}
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT key, value FROM preferences"
+            ).fetchall()
+            return {r["key"]: r["value"] for r in rows}
 
     def delete_preference(self, key: str) -> None:
         """Delete a preference."""
-        self._conn.execute(
-            "DELETE FROM preferences WHERE key = ?", (key,)
-        )
-        self._conn.commit()
+        with self._lock:
+            self._conn.execute(
+                "DELETE FROM preferences WHERE key = ?", (key,)
+            )
+            self._conn.commit()

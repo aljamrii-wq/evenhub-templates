@@ -75,6 +75,18 @@ class TestRenderEndpoint:
 
 
 class TestModeEndpoint:
+    def test_render_oversized_text_rejected(self, client):
+        """Oversized text should be rejected (422) before hitting PIL."""
+        big_text = "A" * 5001  # exceeds default _MAX_RENDER_CHARS of 5000
+        response = client.post("/render", json={"text": big_text})
+        assert response.status_code == 422
+
+    def test_render_max_boundary_ok(self, client):
+        """Text at exactly the max length should work."""
+        text = "A" * 5000
+        response = client.post("/render", json={"text": text})
+        assert response.status_code == 200
+
     """Test /mode endpoint."""
 
     def test_mode_detect_defaults(self, client):

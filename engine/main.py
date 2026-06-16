@@ -22,7 +22,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from renderer import ArabicBitmapRenderer
+from renderer import ArabicBitmapRenderer, RenderError
 from hermes_bridge import (
     AuraMessage, AuraResponse, AuraWebSocketBridge,
     MessageType, ResponseType,
@@ -63,10 +63,13 @@ app = FastAPI(
 )
 
 
+# Maximum text length for /render endpoint — prevents PIL decompression bomb
+_MAX_RENDER_CHARS = int(os.environ.get("AURA_MAX_RENDER_CHARS", "5000"))
+
 # --- Request/Response Models ---
 
 class RenderRequest(BaseModel):
-    text: str = Field(..., min_length=0)
+    text: str = Field(..., min_length=0, max_length=_MAX_RENDER_CHARS)
     font_size: int = Field(default=28, ge=1, le=288)
 
 
@@ -114,15 +117,18 @@ async def render_text(req: RenderRequest):
     (576x288 pixels, 2 pixels per byte).
     """
     # Use a renderer with the requested font_size for this call
-    if req.font_size != renderer.font_size:
-        sized_renderer = ArabicBitmapRenderer(
-            width=renderer.width,
-            height=renderer.height,
-            font_size=req.font_size,
-        )
-        bitmap_bytes = sized_renderer.render(req.text)
-    else:
-        bitmap_bytes = renderer.render(req.text)
+    try:
+        if req.font_size != renderer.font_size:
+            sized_renderer = ArabicBitmapRenderer(
+                width=renderer.width,
+                height=renderer.height,
+                font_size=req.font_size,
+            )
+            bitmap_bytes = sized_renderer.render(req.text)
+        else:
+            bitmap_bytes = renderer.render(req.text)
+    except RenderError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     encoded = base64.b64encode(bitmap_bytes).decode("ascii")
     return RenderResponse(payload=encoded)
 

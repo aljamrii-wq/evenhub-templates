@@ -153,3 +153,36 @@ class TestSessionStoreEdgeCases:
         store.add_message("system", None, "personal")
         msgs = store.get_recent_messages(limit=1)
         assert msgs[0]["content"] == "" or msgs[0]["content"] is None
+
+    def test_concurrent_writes_no_errors(self, store):
+        """Concurrent writes should not cause InterfaceError or data loss."""
+        import threading
+        errors = []
+        results = []
+
+        def writer(start: int, count: int):
+            try:
+                for i in range(start, start + count):
+                    rid = store.add_message("user", f"Concurrent {i}", "personal")
+                    results.append(rid)
+            except Exception as exc:
+                errors.append(exc)
+
+        threads = []
+        total_per_thread = 50
+        thread_count = 4
+        for t in range(thread_count):
+            th = threading.Thread(target=writer, args=(t * total_per_thread, total_per_thread))
+            threads.append(th)
+            th.start()
+
+        for th in threads:
+            th.join()
+
+        # No errors during concurrent writes
+        assert len(errors) == 0, f"Got {len(errors)} errors: {errors}"
+        # All writes succeeded
+        assert store.message_count() == thread_count * total_per_thread
+        # All row IDs are positive integers
+        assert all(isinstance(r, int) and r > 0 for r in results)
+
