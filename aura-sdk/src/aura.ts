@@ -46,6 +46,10 @@ export class Aura {
   private onShakeCb: (() => void) | null = null;
   private onModeChangeCb: ((mode: ModeContext) => void) | null = null;
   private onMessageCb: ((msg: HermesMessage) => void) | null = null;
+  private onDisconnectCb: (() => void) | null = null;
+
+  // Event unsubscription
+  private eventUnsubscribe: (() => void) | null = null;
 
   constructor(config: Partial<AuraConfig> = {}) {
     this.config = { ...DEFAULTS, ...config };
@@ -103,7 +107,7 @@ export class Aura {
     // IMU gesture detection
     if (this.config.gestures) {
       await this.bridge.imuControl(true, 500);
-      this.bridge.onEvenHubEvent((event) => {
+      this.eventUnsubscribe = this.bridge.onEvenHubEvent((event) => {
         const imu = event.sysEvent?.imuData;
         if (imu) {
           const x = imu.x ?? 0;
@@ -119,6 +123,10 @@ export class Aura {
     // Hermes connection
     await this.hermes.connect();
     this.hermes.onMessage((msg) => this.onMessageCb?.(msg));
+    this.hermes.onDisconnect(() => {
+      this.ready = false;
+      this.onDisconnectCb?.();
+    });
 
     this.ready = true;
   }
@@ -164,12 +172,20 @@ export class Aura {
   async alert(title: string, body: string, lang?: Language): Promise<void> {
     const msg: HermesMessage = {
       type: 'alert',
-      text: `${title}
-${body}`,
+      text: `${title}\n${body}`,
       lang: lang || this.config.lang,
       mode: this.modes.current,
     };
     this.hermes.send(msg);
+  }
+
+  /** Disconnect from Hermes and clean up resources */
+  disconnect(): void {
+    this.hermes.disconnect();
+    this.ready = false;
+    this.modes.stop?.();
+    this.eventUnsubscribe?.();
+    this.eventUnsubscribe = null;
   }
 
   // --- Gesture callbacks ---
@@ -179,9 +195,23 @@ ${body}`,
   onModeChange(cb: (mode: ModeContext) => void): void { this.onModeChangeCb = cb; }
   onMessage(cb: (msg: HermesMessage) => void): void { this.onMessageCb = cb; }
 
+  /** Called when Hermes WebSocket disconnects */
+  onDisconnect(cb: () => void): void { this.onDisconnectCb = cb; }
+
   // --- Properties ---
 
   get currentMode(): AuraMode { return this.modes.current; }
-  get isReady(): boolean { return this.ready; }
+  get isReady(): boolean { return this.ready && this.hermes.isConnected(); }
   get bridgeInstance(): EvenAppBridge | null { return this.bridge; }
+
+  /** Check if both EvenAppBridge and Hermes WebSocket are connected */
+  isBothConnected(): boolean {
+    if (!this.bridge) return false;
+    return this.hermes.isConnected();
+  }
+
+  /** Check if Hermes WebSocket is connected */
+  get isHermesConnected(): boolean {
+    return this.hermes.isConnected();
+  }
 }

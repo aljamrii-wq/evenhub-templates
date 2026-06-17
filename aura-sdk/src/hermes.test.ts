@@ -89,7 +89,6 @@ describe('HermesBridge', () => {
 
     it('does not send when socket is not open', () => {
       const bridge = new HermesBridge('wss://test.example.com/ws');
-      // readyState stays 0 (CONNECTING) — send should be a no-op
       bridge.send({ type: 'query', text: 'test', lang: 'en' });
       expect(mockWs.sentMessages).toHaveLength(0);
     });
@@ -142,6 +141,70 @@ describe('HermesBridge', () => {
     });
   });
 
+  describe('onDisconnect', () => {
+    it('registers a disconnect handler', () => {
+      const bridge = new HermesBridge('wss://test.example.com/ws');
+      const handler = jest.fn();
+      bridge.onDisconnect(handler);
+      // handler registered without error
+    });
+
+    it('calls handler when WebSocket closes after being connected', async () => {
+      const bridge = new HermesBridge('wss://test.example.com/ws');
+      const handler = jest.fn();
+      bridge.onDisconnect(handler);
+      const connectPromise = bridge.connect();
+      mockWs.readyState = MockWebSocket.OPEN;
+      mockWs.onopen?.();
+      await connectPromise;
+
+      mockWs.onclose?.();
+      expect(handler).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not call handler on close if never connected', async () => {
+      const bridge = new HermesBridge('wss://test.example.com/ws');
+      const handler = jest.fn();
+      bridge.onDisconnect(handler);
+      // connect() is never resolved — readyState stays CONNECTING
+      bridge.connect();
+      mockWs.onclose?.();
+      expect(handler).not.toHaveBeenCalled();
+    });
+
+    it('handles multiple disconnect handlers', async () => {
+      const bridge = new HermesBridge('wss://test.example.com/ws');
+      const handler1 = jest.fn();
+      const handler2 = jest.fn();
+      bridge.onDisconnect(handler1);
+      bridge.onDisconnect(handler2);
+      const connectPromise = bridge.connect();
+      mockWs.readyState = MockWebSocket.OPEN;
+      mockWs.onopen?.();
+      await connectPromise;
+
+      mockWs.onclose?.();
+      expect(handler1).toHaveBeenCalledTimes(1);
+      expect(handler2).toHaveBeenCalledTimes(1);
+    });
+
+    it('ignores errors thrown by disconnect handlers', async () => {
+      const bridge = new HermesBridge('wss://test.example.com/ws');
+      const badHandler = jest.fn().mockImplementation(() => { throw new Error('handler error'); });
+      const goodHandler = jest.fn();
+      bridge.onDisconnect(badHandler);
+      bridge.onDisconnect(goodHandler);
+      const connectPromise = bridge.connect();
+      mockWs.readyState = MockWebSocket.OPEN;
+      mockWs.onopen?.();
+      await connectPromise;
+
+      mockWs.onclose?.();
+      expect(badHandler).toHaveBeenCalledTimes(1);
+      expect(goodHandler).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('reconnect', () => {
     it('retries connection on close', async () => {
       const bridge = new HermesBridge('wss://test.example.com/ws');
@@ -166,11 +229,43 @@ describe('HermesBridge', () => {
       await connectPromise;
 
       bridge.disconnect();
-      // disconnect sets shouldReconnect=false then calls ws.close()
-      // which triggers onclose — but shouldReconnect is already false
       const callsBefore = wsMockFn.mock.calls.length;
       jest.advanceTimersByTime(30000);
       expect(wsMockFn.mock.calls.length).toBe(callsBefore);
+    });
+  });
+
+  describe('isConnected', () => {
+    it('returns false before connecting', () => {
+      const bridge = new HermesBridge('wss://test.example.com/ws');
+      expect(bridge.isConnected()).toBe(false);
+    });
+
+    it('returns true when WebSocket is open', async () => {
+      const bridge = new HermesBridge('wss://test.example.com/ws');
+      const connectPromise = bridge.connect();
+      mockWs.readyState = MockWebSocket.OPEN;
+      mockWs.onopen?.();
+      await connectPromise;
+
+      expect(bridge.isConnected()).toBe(true);
+    });
+
+    it('returns false when WebSocket is not open (CONNECTING)', () => {
+      const bridge = new HermesBridge('wss://test.example.com/ws');
+      bridge.connect(); // fire-and-forget, readyState is 0 (CONNECTING)
+      expect(bridge.isConnected()).toBe(false);
+    });
+
+    it('returns false after disconnect', async () => {
+      const bridge = new HermesBridge('wss://test.example.com/ws');
+      const connectPromise = bridge.connect();
+      mockWs.readyState = MockWebSocket.OPEN;
+      mockWs.onopen?.();
+      await connectPromise;
+
+      bridge.disconnect();
+      expect(bridge.isConnected()).toBe(false);
     });
   });
 });
