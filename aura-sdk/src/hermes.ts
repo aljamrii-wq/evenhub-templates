@@ -16,6 +16,7 @@ export class HermesBridge {
   private reconnectDelay = 1000;
   private maxDelay = 30000;
   private shouldReconnect = true;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(url: string) {
     this.url = url;
@@ -45,7 +46,7 @@ export class HermesBridge {
 
         this.ws.onclose = () => {
           if (this.shouldReconnect) {
-            setTimeout(() => this.connect(), this.reconnectDelay);
+            this.reconnectTimer = setTimeout(() => this.connect(), this.reconnectDelay);
             this.reconnectDelay = Math.min(this.reconnectDelay * 2, this.maxDelay);
           }
         };
@@ -71,9 +72,13 @@ export class HermesBridge {
     this.handlers.push(handler);
   }
 
-  /** Disconnect */
+  /** Disconnect — clears pending reconnect timer and closes the WebSocket */
   disconnect(): void {
     this.shouldReconnect = false;
+    if (this.reconnectTimer !== null) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
     this.ws?.close();
     this.ws = null;
   }

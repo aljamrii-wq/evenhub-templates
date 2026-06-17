@@ -116,14 +116,14 @@ async def health():
     )
 
 
-@app.post("/render", response_model=RenderResponse)
+@app.post("/render")
 async def render_text(req: RenderRequest):
-    """Render text to a 4-bit grayscale bitmap for Even G2 display.
+    """Render text to a PNG image for Even G2 display.
 
-    Returns a base64-encoded packed 4-bit grayscale bitmap
-    (576x288 pixels, 2 pixels per byte).
+    The Even Hub SDK's updateImageRawData expects encoded image bytes
+    (PNG/JPEG). Returns a PNG image with Content-Type: image/png.
     """
-    # Use a renderer with the requested font_size for this call
+    from fastapi.responses import Response
     try:
         if req.font_size != renderer.font_size:
             sized_renderer = ArabicBitmapRenderer(
@@ -131,13 +131,12 @@ async def render_text(req: RenderRequest):
                 height=renderer.height,
                 font_size=req.font_size,
             )
-            bitmap_bytes = sized_renderer.render(req.text)
+            png_bytes = sized_renderer.render_png(req.text)
         else:
-            bitmap_bytes = renderer.render(req.text)
+            png_bytes = renderer.render_png(req.text)
     except RenderError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    encoded = base64.b64encode(bitmap_bytes).decode("ascii")
-    return RenderResponse(payload=encoded)
+    return Response(content=png_bytes, media_type="image/png")
 
 
 def _sanitize_mode_inputs(device_info: dict, recent_interactions: list[str]) -> tuple[dict, list[str]]:

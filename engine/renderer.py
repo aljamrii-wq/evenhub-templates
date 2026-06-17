@@ -5,6 +5,7 @@ Output is raw pixel bytes (2 pixels per byte, high nibble first)
 consumable directly by the Even G2 display.
 """
 
+import io
 import logging
 from PIL import Image, ImageDraw, ImageFont
 
@@ -158,6 +159,36 @@ class ArabicBitmapRenderer:
         """Return an all-zero bitmap of the correct size."""
         return b"\x00" * ((self.width * self.height) // 2)
 
+    def render_png(self, text: str | None) -> bytes:
+        """Render text to a PNG image for Even G2 display.
+
+        The Even Hub SDK's updateImageRawData expects encoded image bytes
+        (PNG/JPEG), not raw pixel data.
+        """
+        try:
+            if not text:
+                img = Image.new("L", (self.width, self.height), 0)
+            else:
+                shaped = self._shape_text(text)
+                img = Image.new("L", (self.width, self.height), 0)
+                draw = ImageDraw.Draw(img)
+                margin = 8
+                max_width = self.width - 2 * margin
+                lines_list = self._wrap_text(draw, shaped, max_width)
+                y = margin
+                line_height = self.font_size + 4
+                for line in lines_list:
+                    if y + line_height > self.height - margin:
+                        break
+                    draw.text((margin, y), line, fill=255, font=self._font)
+                    y += line_height
+            import io
+            buf = io.BytesIO()
+            img.save(buf, format='PNG')
+            return buf.getvalue()
+        except Exception as exc:
+            raise RenderError(f"PNG rendering failed: {exc}") from exc
+
     def raw_bytes(self, text: str | None) -> bytes:
-        """Convenience alias for render()."""
+        """Convenience alias for render() — raw 4-bit packed bitmap bytes."""
         return self.render(text)

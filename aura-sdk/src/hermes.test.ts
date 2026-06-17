@@ -146,5 +146,26 @@ describe('HermesBridge', () => {
       bridge.disconnect();
       expect(mockWs.readyState).toBe(3);
     });
+
+    it('clears pending reconnect timer when disconnected during close', async () => {
+      jest.useFakeTimers();
+      const connectPromise = bridge.connect();
+      mockWs.readyState = 1;
+      mockWs.onopen?.();
+      await connectPromise;
+
+      // Simulate close — schedules reconnect via setTimeout
+      mockWs.onclose?.();
+
+      // Immediately disconnect — should clear pending timer
+      bridge.disconnect();
+
+      // Advance time past the reconnect delay
+      jest.advanceTimersByTime(5000);
+
+      // Verify no new WebSocket was created (reconnect was cancelled)
+      expect((global as any).WebSocket).toHaveBeenCalledTimes(1);
+      jest.useRealTimers();
+    });
   });
 });

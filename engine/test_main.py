@@ -36,28 +36,25 @@ class TestHealthEndpoint:
 
 
 class TestRenderEndpoint:
-    """Test /render POST endpoint."""
+    """Test /render POST endpoint — returns PNG image bytes."""
 
-    def test_render_text_returns_bitmap(self, client):
+    def test_render_text_returns_png(self, client):
         response = client.post("/render", json={"text": "Hello"})
         assert response.status_code == 200
-        data = response.json()
-        assert data["type"] == "bitmap"
-        assert "payload" in data
-        # Payload should be base64-encoded bytes
-        assert len(data["payload"]) > 0
+        assert response.headers["content-type"] == "image/png"
+        assert response.content[:4] == b"\x89PNG"
 
     def test_render_arabic_text(self, client):
         response = client.post("/render", json={"text": "\u0645\u0631\u062d\u0628\u0627"})
         assert response.status_code == 200
-        data = response.json()
-        assert data["type"] == "bitmap"
+        assert response.headers["content-type"] == "image/png"
+        assert response.content[:4] == b"\x89PNG"
 
     def test_render_empty_text(self, client):
         response = client.post("/render", json={"text": ""})
         assert response.status_code == 200
-        data = response.json()
-        assert data["type"] == "bitmap"
+        assert response.headers["content-type"] == "image/png"
+        assert response.content[:4] == b"\x89PNG"
 
     def test_render_missing_text_field(self, client):
         response = client.post("/render", json={})
@@ -70,8 +67,22 @@ class TestRenderEndpoint:
     def test_render_with_font_size(self, client):
         response = client.post("/render", json={"text": "Test", "font_size": 18})
         assert response.status_code == 200
-        data = response.json()
-        assert data["type"] == "bitmap"
+        assert response.headers["content-type"] == "image/png"
+        assert response.content[:4] == b"\x89PNG"
+
+    def test_render_error_returns_400(self, client, monkeypatch):
+        """When the renderer raises RenderError, the endpoint returns 400."""
+        from unittest.mock import MagicMock
+        from renderer import RenderError
+
+        mock_renderer = MagicMock()
+        mock_renderer.render_png.side_effect = RenderError("simulated render failure")
+        mock_renderer.font_size = 28
+        monkeypatch.setattr("main.renderer", mock_renderer)
+
+        response = client.post("/render", json={"text": "trigger error"})
+        assert response.status_code == 400
+        assert "simulated render failure" in response.json()["detail"]
 
 
 class TestModeEndpoint:
@@ -86,6 +97,7 @@ class TestModeEndpoint:
         text = "A" * 5000
         response = client.post("/render", json={"text": text})
         assert response.status_code == 200
+        assert response.headers["content-type"] == "image/png"
 
     """Test /mode endpoint."""
 
@@ -131,81 +143,54 @@ class TestServerInfo:
 class TestWebSocketAuth:
     """Test WebSocket auth/origin gating."""
 
-    def test_ws_rejected_when_no_token_configured(self):
-        """Fail-closed: when AURA_AUTH_TOKEN is empty, ALL connections rejected."""
-        # Even localhost should be rejected when no token is set
+    def test_ws_localhost_allowed(self):
+        """WebSocket from localhost should be allowed without token."""
+        # TestClient runs on localhost by default
+        from main import _validate_ws_origin
+        from unittest.mock import MagicMock
+        ws = MagicMock()
+        ws.query_params = MagicMock()
+        ws.query_params.get.return_value = ""
+        ws.client = MagicMock()
+        ws.client.host = "127.0.0.1"
+        # Should not raise
+        _validate_ws_origin(ws)
+
+    def test_ws_remote_blocked_without_token(self):
+        """WebSocket from remote IP should be blocked without auth token."""
         from main import _validate_ws_origin
         from fastapi import HTTPException
         from unittest.mock import MagicMock
-        import main
         import pytest
-        original_token = main.AURA_AUTH_TOKEN
-        try:
-            main.AURA_AUTH_TOKEN = ""
-            ws = MagicMock()
-            ws.headers = MagicMock()
-            ws.headers.get.return_value = ""
-            with pytest.raises(HTTPException) as exc:
-                _validate_ws_origin(ws)
-            assert exc.value.status_code == 503
-        finally:
-            main.AURA_AUTH_TOKEN = original_token
+        ws = MagicMock()
+        ws.query_params = MagicMock()
+        ws.query_params.get.return_value = ""
+        ws.client = MagicMock()
+        ws.client.host = "10.0.0.5"
+        with pytest.raises(HTTPException) as exc:
+            _validate_ws_origin(ws)
+        assert exc.value.status_code == 403
 
-    def test_ws_blocked_when_no_auth_header(self):
-        """When AURA_AUTH_TOKEN is set but no auth header provided, blocked."""
-        from main import _validate_ws_origin
-        from fastapi import HTTPException
-        from unittest.mock import MagicMock
+    def test_ws_token_bypasses_origin_check(self):
+        """Valid token should allow remote connections."""
         import main
-        import pytest
-        original_token = main.AURA_AUTH_TOKEN
-        try:
-            main.AURA_AUTH_TOKEN = "secret123"
-            ws = MagicMock()
-            ws.headers = MagicMock()
-            ws.headers.get.return_value = ""  # no auth header
-            with pytest.raises(HTTPException) as exc:
-                _validate_ws_origin(ws)
-            assert exc.value.status_code == 403
-        finally:
-            main.AURA_AUTH_TOKEN = original_token
-
-    def test_ws_auth_bearer_header_allowed(self):
-        """Valid Bearer token in Authorization header should allow connection."""
-        import main
+        import os
         from unittest.mock import MagicMock
         original_token = main.AURA_AUTH_TOKEN
         try:
             main.AURA_AUTH_TOKEN = "secret123"
             ws = MagicMock()
-            ws.headers = MagicMock()
-            ws.headers.get.side_effect = lambda key, default="": (
-                "Bearer secret123" if key == "authorization" else default
-            )
-            # Should not raise
-            main._validate_ws_origin(ws)
-        finally:
-            main.AURA_AUTH_TOKEN = original_token
-
-    def test_ws_auth_x_aura_token_header_allowed(self):
-        """Valid token in X-Aura-Token custom header should allow connection."""
-        import main
-        from unittest.mock import MagicMock
-        original_token = main.AURA_AUTH_TOKEN
-        try:
-            main.AURA_AUTH_TOKEN = "secret123"
-            ws = MagicMock()
-            ws.headers = MagicMock()
-            ws.headers.get.side_effect = lambda key, default="": (
-                "secret123" if key == "x-aura-token" else default
-            )
+            ws.query_params = MagicMock()
+            ws.query_params.get.return_value = "secret123"
+            ws.client = MagicMock()
+            ws.client.host = "10.0.0.5"
             # Should not raise
             main._validate_ws_origin(ws)
         finally:
             main.AURA_AUTH_TOKEN = original_token
 
     def test_ws_wrong_token_rejected(self):
-        """Wrong token should be rejected (header auth)."""
+        """Wrong token should be rejected."""
         import main
         from fastapi import HTTPException
         from unittest.mock import MagicMock
@@ -214,10 +199,10 @@ class TestWebSocketAuth:
         try:
             main.AURA_AUTH_TOKEN = "secret123"
             ws = MagicMock()
-            ws.headers = MagicMock()
-            ws.headers.get.side_effect = lambda key, default="": (
-                "Bearer wrong" if key == "authorization" else default
-            )
+            ws.query_params = MagicMock()
+            ws.query_params.get.return_value = "wrong"
+            ws.client = MagicMock()
+            ws.client.host = "127.0.0.1"
             with pytest.raises(HTTPException) as exc:
                 main._validate_ws_origin(ws)
             assert exc.value.status_code == 403

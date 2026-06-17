@@ -2,7 +2,7 @@
  * ArabicRenderer — Renders Arabic/RTL text as greyscale images for G2 display.
  * 
  * Works by sending text to aura-engine (Python) which uses PIL + arabic_reshaper + python-bidi.
- * The engine returns raw 4-bit greyscale pixel data suitable for updateImageRawData.
+ * The engine returns PNG-encoded image bytes suitable for updateImageRawData.
  */
 
 import type { Language, RenderResult } from './types';
