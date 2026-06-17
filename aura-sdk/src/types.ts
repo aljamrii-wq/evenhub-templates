@@ -47,3 +47,7 @@ export interface ModeContext {
   confidence: number;
   reason: string;
 }
+
+// Re-export BLE security types — defined in ble.ts but re-exported
+// from types.ts for clean import paths.
+export type { BleSecurityConfig, BleSecurityState } from './ble';
