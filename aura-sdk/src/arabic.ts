@@ -6,6 +6,7 @@
  */
 
 import type { Language, RenderResult } from './types';
+import { DISPLAY_WIDTH, DISPLAY_HEIGHT } from "./container-constraints";
 
 export class ArabicRenderer {
   private lang: Language;
@@ -35,8 +36,8 @@ export class ArabicRenderer {
         text,
         lang: effectiveLang,
         size: size || 24,
-        width: 576,
-        height: 288,
+        width: DISPLAY_WIDTH,
+        height: DISPLAY_HEIGHT,
       }),
     });
 
@@ -48,7 +49,7 @@ export class ArabicRenderer {
     const buffer = await resp.arrayBuffer();
     const pixels = new Uint8Array(buffer);
 
-    this.cache.set(key, { pixels, width: 576, height: 288 });
+    this.cache.set(key, { pixels, width: DISPLAY_WIDTH, height: DISPLAY_HEIGHT });
 
     // Limit cache size
     if (this.cache.size > 100) {
