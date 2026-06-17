@@ -11,3 +11,5 @@ __pycache__/
 .venv/
 .pytest_cache/
 *.pyc
+engine/.coverage
+engine/.venv/
