@@ -21,6 +21,7 @@ export {
   validateBleSecurity,
   formatBleSecurityReport,
 } from './ble';
+export { waitForGattReady, isGattReady } from './gatt';
 export { GestureEngine } from './gestures';
 export { HermesBridge } from './hermes';
 export { ModeDetector } from './modes';

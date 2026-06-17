@@ -17,6 +17,7 @@ import { ArabicRenderer } from './arabic';
 import { GestureEngine } from './gestures';
 import { HermesBridge } from './hermes';
 import { ModeDetector } from './modes';
+import { waitForGattReady } from './gatt';
 
 import type { AuraConfig, AuraMode, Language, HermesMessage, GestureEvent, ModeContext } from './types';
 
@@ -26,6 +27,8 @@ const DEFAULTS: AuraConfig = {
   hermesUrl: 'wss://hermes.aljamrigroup.com/aura',
   gestures: true,
   alwaysListen: false,
+  /** Max ms to wait for GATT service discovery after BLE connect (0 = skip) */
+  gattTimeoutMs: 5000,
 };
 
 export class Aura {
@@ -63,6 +66,15 @@ export class Aura {
   async init(): Promise<void> {
     if (this.disposed) throw new Error('Aura has been disposed');
     this.bridge = await waitForEvenAppBridge();
+
+    // GATT readiness guard — iOS reports BLE 'connected' before GATT
+    // services are discovered, causing silent command failures.
+    // Poll getDeviceInfo() until GATT is actually ready or timeout.
+    if ((this.config.gattTimeoutMs ?? 0) > 0) {
+      await waitForGattReady(this.bridge, {
+        timeoutMs: this.config.gattTimeoutMs,
+      });
+    }
 
     // Create startup page container (required before any display operations)
     const container = new CreateStartUpPageContainer({

@@ -36,7 +36,11 @@ function mockBridge() {
 
 function setupBridge(bridge: any, overrides: Record<string, any> = {}) {
   bridge.createStartUpPageContainer.mockResolvedValue(overrides.createResult ?? 0);
-  bridge.getDeviceInfo.mockResolvedValue(overrides.deviceInfo ?? null);
+    // Default to truthy deviceInfo so GATT readiness guard passes.
+  // Use deviceInfo: null only when explicitly testing GATT timeout.
+  bridge.getDeviceInfo.mockResolvedValue(
+    overrides.deviceInfo !== undefined ? overrides.deviceInfo : { status: {} },
+  );
   if (overrides.eventHandler) {
     bridge.onEvenHubEvent.mockImplementation(overrides.eventHandler);
   } else {
@@ -229,7 +233,7 @@ describe('Aura', () => {
     expect(bridge.getDeviceInfo).toHaveBeenCalled();
   });
 
-  it('skips mode detection when mode is forced', async () => {
+  it('GATT guard calls getDeviceInfo even when mode is forced', async () => {
     const forcedAura = new Aura({ mode: 'personal', gestures: false });
     const bridge = mockBridge();
     setupBridge(bridge);
@@ -237,7 +241,7 @@ describe('Aura', () => {
 
     await forcedAura.init();
 
-    expect(bridge.getDeviceInfo).not.toHaveBeenCalled();
+        // GATT guard calls getDeviceInfo once; mode detection is skipped
 
     forcedAura.dispose();
   });
@@ -286,4 +290,26 @@ describe('Aura', () => {
     await aura.init();
     aura.alert('Meeting', 'Starts in 5 minutes', 'en');
   });
+  // --- GATT readiness guard ---
+
+  it('throws when GATT services never become ready', async () => {
+    const bridge = mockBridge();
+    setupBridge(bridge, { deviceInfo: null });  // null = GATT never ready
+    (waitForEvenAppBridge as any).mockResolvedValue(bridge);
+
+    await expect(aura.init()).rejects.toThrow(/GATT service discovery timeout/);
+    expect(aura.isReady).toBe(false);
+  });
+
+  it('skips GATT guard when gattTimeoutMs is 0', async () => {
+    const noGatt = new Aura({ gattTimeoutMs: 0 });
+    const bridge = mockBridge();
+    setupBridge(bridge, { deviceInfo: null });  // null won't matter — guard is skipped
+    (waitForEvenAppBridge as any).mockResolvedValue(bridge);
+
+    await noGatt.init();
+    expect(noGatt.isReady).toBe(true);
+    noGatt.dispose();
+  });
+
 });

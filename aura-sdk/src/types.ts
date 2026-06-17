@@ -17,6 +17,8 @@ export interface AuraConfig {
   gestures: boolean;
   /** Enable continuous listening */
   alwaysListen: boolean;
+  /** Max ms to wait for GATT service discovery after BLE connect (0 = skip, default: 5000) */
+  gattTimeoutMs?: number;
 }
 
 export interface HermesMessage {
