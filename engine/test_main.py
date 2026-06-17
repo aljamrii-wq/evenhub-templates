@@ -141,57 +141,61 @@ class TestServerInfo:
 
 
 class TestWebSocketAuth:
-    """Test WebSocket auth/origin gating."""
+    """Test WebSocket auth/origin gating — fail-closed, header-based."""
 
-    def test_ws_localhost_allowed(self):
-        """WebSocket from localhost should be allowed without token."""
-        # TestClient runs on localhost by default
-        from main import _validate_ws_origin
-        from unittest.mock import MagicMock
-        ws = MagicMock()
-        ws.query_params = MagicMock()
-        ws.query_params.get.return_value = ""
-        ws.client = MagicMock()
-        ws.client.host = "127.0.0.1"
-        # Should not raise
-        _validate_ws_origin(ws)
-
-    def test_ws_remote_blocked_without_token(self):
-        """WebSocket from remote IP should be blocked without auth token."""
-        from main import _validate_ws_origin
-        from fastapi import HTTPException
-        from unittest.mock import MagicMock
-        import pytest
-        ws = MagicMock()
-        ws.query_params = MagicMock()
-        ws.query_params.get.return_value = ""
-        ws.client = MagicMock()
-        ws.client.host = "10.0.0.5"
-        with pytest.raises(HTTPException) as exc:
-            _validate_ws_origin(ws)
-        assert exc.value.status_code == 403
-
-    def test_ws_token_bypasses_origin_check(self):
-        """Valid token should allow remote connections."""
+    def test_ws_valid_bearer_token_allows_connection(self):
+        """Valid Authorization: Bearer *** allows connection."""
         import main
-        import os
+        from main import _validate_ws_origin
         from unittest.mock import MagicMock
         original_token = main.AURA_AUTH_TOKEN
         try:
             main.AURA_AUTH_TOKEN = "secret123"
             ws = MagicMock()
-            ws.query_params = MagicMock()
-            ws.query_params.get.return_value = "secret123"
-            ws.client = MagicMock()
-            ws.client.host = "10.0.0.5"
+            ws.headers = {"authorization": "Bearer secret123", "x-aura-token": ""}
             # Should not raise
-            main._validate_ws_origin(ws)
+            _validate_ws_origin(ws)
+        finally:
+            main.AURA_AUTH_TOKEN = original_token
+
+    def test_ws_valid_x_aura_token_allows_connection(self):
+        """Valid X-Aura-Token custom header allows connection."""
+        import main
+        from main import _validate_ws_origin
+        from unittest.mock import MagicMock
+        original_token = main.AURA_AUTH_TOKEN
+        try:
+            main.AURA_AUTH_TOKEN = "secret123"
+            ws = MagicMock()
+            ws.headers = {"authorization": "", "x-aura-token": "secret123"}
+            # Should not raise
+            _validate_ws_origin(ws)
+        finally:
+            main.AURA_AUTH_TOKEN = original_token
+
+    def test_ws_blocked_when_token_not_configured(self):
+        """Fail-closed: 503 when AURA_AUTH_TOKEN is empty."""
+        import main
+        from main import _validate_ws_origin
+        from fastapi import HTTPException
+        from unittest.mock import MagicMock
+        import pytest
+        original_token = main.AURA_AUTH_TOKEN
+        try:
+            main.AURA_AUTH_TOKEN = ""
+            ws = MagicMock()
+            ws.headers = {"authorization": "", "x-aura-token": ""}
+            with pytest.raises(HTTPException) as exc:
+                _validate_ws_origin(ws)
+            assert exc.value.status_code == 503
+            assert "not configured" in exc.value.detail
         finally:
             main.AURA_AUTH_TOKEN = original_token
 
     def test_ws_wrong_token_rejected(self):
-        """Wrong token should be rejected."""
+        """Wrong token returns 403."""
         import main
+        from main import _validate_ws_origin
         from fastapi import HTTPException
         from unittest.mock import MagicMock
         import pytest
@@ -199,12 +203,10 @@ class TestWebSocketAuth:
         try:
             main.AURA_AUTH_TOKEN = "secret123"
             ws = MagicMock()
-            ws.query_params = MagicMock()
-            ws.query_params.get.return_value = "wrong"
-            ws.client = MagicMock()
-            ws.client.host = "127.0.0.1"
+            ws.headers = {"authorization": "Bearer wrongtoken", "x-aura-token": ""}
             with pytest.raises(HTTPException) as exc:
-                main._validate_ws_origin(ws)
+                _validate_ws_origin(ws)
             assert exc.value.status_code == 403
+            assert "Invalid" in exc.value.detail
         finally:
             main.AURA_AUTH_TOKEN = original_token
