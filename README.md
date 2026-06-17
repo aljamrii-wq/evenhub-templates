@@ -1,85 +1,74 @@
-# evenhub-templates
+# Aura — Custom G2 Smart Glasses App
 
-Starter templates for [Even Realities G2](https://www.evenrealities.com/) smart glasses apps.
+**Fork of EvenDemoApp → Aura by Aljamri**
 
-Four fully working scaffolds you can clone and run:
+## Architecture
 
-| Template | What it shows |
-|---|---|
-| [`minimal/`](./minimal) | Bare base: Vite + TypeScript + Even Hub SDK + simulator. "Hello from G2!" on the display. |
-| [`asr/`](./asr) | Live mic → speech-to-text pipeline with companion UI and double-tap exit. STT provider is a blank stub — plug in your own. |
-| [`image/`](./image) | Image container rendering. Preprocessing/dithering is optional; the SDK handles grayscale conversion. |
-| [`text-heavy/`](./text-heavy) | Long-form text with click-to-advance pagination. Demonstrates the 2000-char `textContainerUpgrade` path. |
-
-## Get a template
-
-Using [`degit`](https://github.com/Rich-Harris/degit) (recommended — no git history, fast):
-
-```bash
-npx degit LesenmiaoYu/evenhub-templates/minimal my-app
-cd my-app
-npm install
-npm run dev
+```
+lib/
+├── main.dart              # Entry point → MaterialApp with Aura theme
+├── app.dart               # App-level lifecycle (exit all, cleanup)
+├── ble_manager.dart       # BLE: scan, connect, send, receive, heartbeat
+├── services/
+│   ├── proto.dart         # BLE command encoding (heartbeat, AI, display)
+│   ├── ble.dart           # BleReceive / BleDevice type definitions
+│   ├── evenai.dart        # AI flow controller (mic, speech, render pipeline)
+│   ├── evenai_proto.dart  # Multi-pack BLE data formatting
+│   ├── aura_engine_service.dart  # Aura Engine HTTP client (replaces DeepSeek)
+│   ├── api_services.dart        # [LEGACY] DashScope API (not used)
+│   ├── api_services_deepseek.dart # [LEGACY] DeepSeek API (not used)
+│   ├── text_service.dart  # Text → glasses display pipeline
+│   └── features_services.dart   # BMP image display
+├── controllers/
+│   └── evenai_model_controller.dart  # GetX state for AI history
+├── models/
+│   └── evenai_model.dart   # AI history data model
+├── utils/
+│   ├── utils.dart          # Byte helpers, hex conversion
+│   └── string_extension.dart
+└── views/
+    ├── home_page.dart              # BLE scan + AI home
+    ├── even_list_page.dart         # AI history list
+    ├── features_page.dart          # Feature selection
+    └── features/
+        ├── bmp_page.dart           # BMP image testing
+        ├── text_page.dart          # Text-to-glasses
+        └── notification/
+            ├── notification_page.dart
+            └── notify_model.dart
 ```
 
-Substitute `minimal` with `asr`, `image`, or `text-heavy` for the other templates.
+## BLE Protocol (G2 Glasses)
 
-Or clone the whole repo and copy the folder you want:
+| Item | Value |
+|------|-------|
+| UART Service | `6E400001-B5A3-F393-E0A9-E50E24DCCA9E` |
+| Write Char | `6E400002` |
+| Notify Char | `6E400003` |
+| Peripheral pair | Left `_L_`, Right `_R_` |
 
-```bash
-git clone https://github.com/LesenmiaoYu/evenhub-templates.git
-cp -r evenhub-templates/asr my-app
-cd my-app && npm install
-```
+See `services/proto.dart` for full command set.
 
-## Prerequisites
+## Aura Engine Backend
 
-- Node.js v18+
-- The Even Hub companion app installed on a phone, or the `evenhub-simulator` on desktop
-- (ASR template only) An STT provider of your choice — Deepgram, AssemblyAI, Whisper, Soniox, self-hosted, etc.
+Aura Engine runs on the server at:
+- Tailscale: `http://100.76.131.27:8000`
+- External: `http://165.22.83.210:8000`
 
-## Test on real glasses
+| Endpoint | Method | Body | Returns |
+|----------|--------|------|---------|
+| `/chat` | POST | `{"query": "...", "mode": "chat"}` | `{"answer": "..."}` |
 
-```bash
-npm run dev
-npx evenhub qr --url http://<your-ip>:5173
-```
-
-Scan the QR code with the Even Hub companion app on a phone paired with your G2.
-
-## Test in the simulator
+## Build
 
 ```bash
-npm run dev
-npx evenhub-simulator http://localhost:5173
+flutter pub get
+flutter analyze
+flutter build ios --no-codesign  # requires macOS
 ```
 
-## Pack for distribution
+## Release Policy
 
-```bash
-npx evenhub pack
-```
-
-Produces an `.ehpk` you can upload through the Even Hub dev portal.
-
-## Hardware quick reference
-
-| Property | Value |
-|---|---|
-| Display | 576 x 288 px, 4-bit greyscale (16 shades of green) |
-| Microphone | On the glasses, PCM s16le @ 16 kHz mono |
-| Camera | None |
-| Speaker | None |
-| Input | Touchpad on the temple, optional R1 ring |
-
-## Resources
-
-- [Even Hub Docs](https://hub.evenrealities.com/docs/getting-started/overview)
-- [Even Hub SDK (npm)](https://www.npmjs.com/package/@evenrealities/even_hub_sdk)
-- [Even Hub CLI (npm)](https://www.npmjs.com/package/@evenrealities/evenhub-cli)
-- [Simulator (npm)](https://www.npmjs.com/package/@evenrealities/evenhub-simulator)
-- [Community Discord](https://discord.gg/Y4jHMCU4sv)
-
-## License
-
-MIT
+- No App Store submissions from this repo.
+- Sideload via developer certificate or TestFlight.
+- See `AGENTS.md` in workspace root for full delivery rules.
