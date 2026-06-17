@@ -15,6 +15,7 @@ import base64
 import logging
 import os
 import re
+import secrets
 from contextlib import asynccontextmanager
 from typing import Optional
 
@@ -212,7 +213,7 @@ def _validate_ws_origin(websocket: WebSocket) -> None:
     if not token:
         token = websocket.headers.get("x-aura-token", "")
 
-    if token != AURA_AUTH_TOKEN:
+    if not secrets.compare_digest(token, AURA_AUTH_TOKEN):
         raise HTTPException(status_code=403, detail="Invalid or missing auth token")
 
 

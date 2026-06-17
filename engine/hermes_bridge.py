@@ -131,12 +131,19 @@ class AuraWebSocketBridge:
         """Handle a mode switch request."""
         try:
             switch_data = json.loads(msg.payload)
-            new_mode = switch_data.get("to", msg.mode.value)
+            raw_mode = switch_data.get("to", msg.mode.value)
         except json.JSONDecodeError:
-            new_mode = msg.payload
-        self.context["last_mode"] = new_mode
-        logger.info("Mode switched to: %s", new_mode)
-        return AuraResponse(type=ResponseType.TEXT, payload=f"Mode switched to {new_mode}")
+            raw_mode = msg.payload
+
+        try:
+            validated_mode = Mode(raw_mode)
+        except ValueError as exc:
+            raise ValueError(f"Invalid mode: {raw_mode}") from exc
+
+        mode_value = validated_mode.value
+        self.context["last_mode"] = mode_value
+        logger.info("Mode switched to: %s", mode_value)
+        return AuraResponse(type=ResponseType.TEXT, payload=f"Mode switched to {mode_value}")
 
     def _build_prompt(self, msg: AuraMessage) -> str:
         """Build a prompt string for Hermes with context."""

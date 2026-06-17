@@ -121,6 +121,14 @@ class TestAuraWebSocketBridge:
         assert "aljamri" in resp.payload
 
     @pytest.mark.asyncio
+    async def test_handle_mode_switch_rejects_invalid_mode(self):
+        bridge = AuraWebSocketBridge(hermes_command="echo")
+        msg = AuraMessage(type=MessageType.MODE_SWITCH, payload='{"to": "not-a-mode"}', mode=Mode.PERSONAL)
+        resp = await bridge.handle_message(msg)
+        assert resp.type == ResponseType.ERROR
+        assert "invalid mode" in resp.payload.lower()
+
+    @pytest.mark.asyncio
     async def test_handle_unknown_type(self):
         bridge = AuraWebSocketBridge(hermes_command="echo")
         msg = AuraMessage(type=MessageType.QUERY, payload="test", mode=Mode.PERSONAL)
