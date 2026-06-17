@@ -1,0 +1,34 @@
+{
+  "name": "@aljamri/aura-sdk",
+  "version": "0.1.0",
+  "description": "Enhanced Even Hub SDK \u2014 Arabic rendering, IMU gestures, Hermes bridge, mode detection",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist/"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "prepare": "tsc",
+    "dev": "tsc --watch",
+    "test": "jest"
+  },
+  "dependencies": {
+    "@evenrealities/even_hub_sdk": "^0.0.10"
+  },
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "jest": "^30.4.2",
+    "ts-jest": "^29.4.11",
+    "typescript": "^5.7.0"
+  },
+  "keywords": [
+    "even-realities",
+    "g2",
+    "smart-glasses",
+    "arabic",
+    "rtl",
+    "hermes"
+  ],
+  "license": "MIT"
+}
