@@ -8,14 +8,17 @@
 import type { HermesMessage } from './types';
 
 type MessageHandler = (msg: HermesMessage) => void;
+type DisconnectHandler = () => void;
 
 export class HermesBridge {
   private url: string;
   private ws: WebSocket | null = null;
   private handlers: MessageHandler[] = [];
+  private disconnectHandlers: DisconnectHandler[] = [];
   private reconnectDelay = 1000;
   private maxDelay = 30000;
   private shouldReconnect = true;
+  private connected = false;
 
   constructor(url: string) {
     this.url = url;
@@ -28,6 +31,7 @@ export class HermesBridge {
         this.ws = new WebSocket(this.url);
 
         this.ws.onopen = () => {
+          this.connected = true;
           this.reconnectDelay = 1000;
           resolve();
         };
@@ -44,6 +48,16 @@ export class HermesBridge {
         };
 
         this.ws.onclose = () => {
+          const wasConnected = this.connected;
+          this.connected = false;
+
+          // Notify disconnect handlers
+          if (wasConnected) {
+            for (const handler of this.disconnectHandlers) {
+              try { handler(); } catch { /* ignore handler errors */ }
+            }
+          }
+
           if (this.shouldReconnect) {
             setTimeout(() => this.connect(), this.reconnectDelay);
             this.reconnectDelay = Math.min(this.reconnectDelay * 2, this.maxDelay);
@@ -71,9 +85,20 @@ export class HermesBridge {
     this.handlers.push(handler);
   }
 
+  /** Register disconnect handler — called when the WebSocket closes */
+  onDisconnect(handler: DisconnectHandler): void {
+    this.disconnectHandlers.push(handler);
+  }
+
+  /** Check if WebSocket is currently connected */
+  isConnected(): boolean {
+    return this.ws?.readyState === WebSocket.OPEN;
+  }
+
   /** Disconnect */
   disconnect(): void {
     this.shouldReconnect = false;
+    this.connected = false;
     this.ws?.close();
     this.ws = null;
   }
