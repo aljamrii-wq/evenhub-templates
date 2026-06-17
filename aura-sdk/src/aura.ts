@@ -66,7 +66,7 @@ export class Aura {
 
     // Create startup page container (required before any display operations)
     const container = new CreateStartUpPageContainer({
-      containerTotalNum: 1,
+      containerTotalNum: 2,
       textObject: [new TextContainerProperty({
         containerID: 1,
         containerName: 'aura',
