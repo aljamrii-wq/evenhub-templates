@@ -1,14 +1,14 @@
 {
   "name": "@aljamri/aura-sdk",
   "version": "0.1.0",
-  "description": "Enhanced Even Hub SDK — Arabic rendering, IMU gestures, Hermes bridge, mode detection",
+  "description": "Enhanced Even Hub SDK \u2014 Arabic rendering, IMU gestures, Hermes bridge, mode detection",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
     "dist/"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node fix-esm-imports.mjs",
     "dev": "tsc --watch",
     "test": "jest"
   },
@@ -29,5 +29,12 @@
     "rtl",
     "hermes"
   ],
-  "license": "MIT"
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  }
 }

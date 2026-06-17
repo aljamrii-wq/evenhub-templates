@@ -17,9 +17,14 @@ export class ArabicRenderer {
     this.lang = lang;
   }
 
-  /** Render text as greyscale pixels for G2 display */
-  async render(text: string, size?: number): Promise<Uint8Array> {
-    const key = `${this.lang}:${size || 24}:${text}`;
+  /** Render text as greyscale pixels for G2 display.
+   *  @param text  The text to render
+   *  @param size  Font size (default 24)
+   *  @param lang  Optional per-call language override — uses constructor lang if omitted
+   */
+  async render(text: string, size?: number, lang?: Language): Promise<Uint8Array> {
+    const effectiveLang = lang || this.lang;
+    const key = `${effectiveLang}:${size || 24}:${text}`;
     const cached = this.cache.get(key);
     if (cached) return cached.pixels;
 
@@ -28,7 +33,7 @@ export class ArabicRenderer {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         text,
-        lang: this.lang,
+        lang: effectiveLang,
         size: size || 24,
         width: 576,
         height: 288,

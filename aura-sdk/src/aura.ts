@@ -60,7 +60,7 @@ export class Aura {
 
     // Create startup page container (required before any display operations)
     const container = new CreateStartUpPageContainer({
-      containerTotalNum: 1,
+      containerTotalNum: 2,
       textObject: [new TextContainerProperty({
         containerID: 1,
         containerName: 'aura',
@@ -97,6 +97,9 @@ export class Aura {
         this.modes.start({}, now);
       }
       this.modes.onChange((ctx) => this.onModeChangeCb?.(ctx));
+    } else {
+      // Force the configured mode (not 'auto')
+      this.modes.forceMode(this.config.mode as AuraMode);
     }
 
     // IMU gesture detection
@@ -130,7 +133,7 @@ export class Aura {
 
     if (language === 'ar' || language === 'ur' || language === 'fa') {
       // Render as image for RTL/connected scripts
-      const pixels = await this.arabic.render(text);
+      const pixels = await this.arabic.render(text, undefined, language);
       const update = new ImageRawDataUpdate({
         containerID: 2,
         containerName: 'aura-img',

@@ -85,6 +85,31 @@ describe('ArabicRenderer', () => {
       expect(mockFetch).toHaveBeenCalledTimes(2);
     });
 
+    it('per-call lang override uses passed language instead of constructor lang', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        arrayBuffer: () => Promise.resolve(new Uint8Array([0]).buffer),
+      });
+
+      // renderer was constructed with 'ar', but override to 'ur'
+      await renderer.render('hello', undefined, 'ur');
+
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(body.lang).toBe('ur');
+    });
+
+    it('uses constructor lang when no per-call override given', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        arrayBuffer: () => Promise.resolve(new Uint8Array([0]).buffer),
+      });
+
+      await renderer.render('hello');
+
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(body.lang).toBe('ar');
+    });
+
     it('throws on non-ok response', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: false,
