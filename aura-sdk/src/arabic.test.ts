@@ -8,7 +8,7 @@ describe('ArabicRenderer', () => {
   let renderer: ArabicRenderer;
 
   beforeEach(() => {
-    renderer = new ArabicRenderer('ar');
+    renderer = new ArabicRenderer("ar", "https://hermes.aljamrigroup.com/aura/render");
     mockFetch.mockReset();
   });
 
@@ -72,7 +72,7 @@ describe('ArabicRenderer', () => {
     });
 
     it('uses different cache keys for different languages', async () => {
-      const rendererEn = new ArabicRenderer('en');
+      const rendererEn = new ArabicRenderer("en", "https://hermes.aljamrigroup.com/aura/render");
       mockFetch.mockResolvedValue({
         ok: true,
         arrayBuffer: () => Promise.resolve(new Uint8Array([0]).buffer),

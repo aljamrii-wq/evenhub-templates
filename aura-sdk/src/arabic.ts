@@ -7,14 +7,14 @@
 
 import type { Language, RenderResult } from './types';
 
-const ENGINE_URL = 'https://hermes.aljamrigroup.com/aura/render';
-
 export class ArabicRenderer {
   private lang: Language;
+  private renderUrl: string;
   private cache = new Map<string, RenderResult>();
 
-  constructor(lang: Language) {
+  constructor(lang: Language, renderUrl: string) {
     this.lang = lang;
+    this.renderUrl = renderUrl;
   }
 
   /** Render text as greyscale pixels for G2 display.
@@ -28,7 +28,7 @@ export class ArabicRenderer {
     const cached = this.cache.get(key);
     if (cached) return cached.pixels;
 
-    const resp = await fetch(ENGINE_URL, {
+    const resp = await fetch(this.renderUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

@@ -48,7 +48,8 @@ export class Aura {
 
   constructor(config: Partial<AuraConfig> = {}) {
     this.config = { ...DEFAULTS, ...config };
-    this.arabic = new ArabicRenderer(this.config.lang);
+    const renderUrl = this.config.hermesUrl.replace(/^wss/, 'https') + '/render';
+    this.arabic = new ArabicRenderer(this.config.lang, renderUrl);
     this.gestures = new GestureEngine();
     this.hermes = new HermesBridge(this.config.hermesUrl);
     this.modes = new ModeDetector();
