@@ -255,9 +255,33 @@ async def aura_websocket(websocket: WebSocket):
                 err = AuraResponse(type=ResponseType.ERROR, payload=str(exc))
                 await websocket.send_text(err.to_json())
     except WebSocketDisconnect:
+        # --- Disconnect handler: cleanup, notification, state update ---
         logger.info("WebSocket client disconnected")
+
+        # Persist disconnect event in session store
+        try:
+            store.add_message(
+                role="system",
+                content="WebSocket client disconnected",
+                mode="personal",
+            )
+        except Exception:
+            logger.exception("Failed to record disconnect in session store")
+
+        # Clean up bridge context for this session
+        bridge.context.clear()
+
     except Exception as exc:
-        logger.exception("WebSocket error")
+        logger.exception("WebSocket error: %s", exc)
+        # Record abnormal disconnect
+        try:
+            store.add_message(
+                role="system",
+                content=f"WebSocket client disconnected abnormally: {exc}",
+                mode="personal",
+            )
+        except Exception:
+            pass
         try:
             await websocket.close()
         except Exception:
