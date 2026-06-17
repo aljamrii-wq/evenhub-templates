@@ -132,6 +132,42 @@ class TestArabicBitmapRenderer:
         expected_len = (576 * 288) // 2
         assert len(result) == expected_len
 
+    # --- font loading edge cases ---
+
+    def test_load_font_with_nonexistent_path_falls_back(self):
+        """Custom font path that doesn't exist should fall back silently."""
+        r = ArabicBitmapRenderer(
+            width=576, height=288, font_path="/nonexistent/path/to/font.ttf"
+        )
+        result = r.render("Test")
+        assert isinstance(result, bytes)
+        expected_len = (576 * 288) // 2
+        assert len(result) == expected_len
+
+    # --- shaping fallback ---
+
+    def test_shape_text_fallback_on_exception(self, renderer, monkeypatch):
+        """When arabic_reshaper.reshape raises, fall back to raw text."""
+        import arabic_reshaper
+
+        def mock_reshape(text):
+            raise RuntimeError("simulated reshape failure")
+
+        monkeypatch.setattr(arabic_reshaper, "reshape", mock_reshape)
+        result = renderer.render("\u0645\u0631\u062d\u0628\u0627")
+        assert isinstance(result, bytes)
+        expected_len = (576 * 288) // 2
+        assert len(result) == expected_len
+
+    def test_render_raises_render_error_on_unexpected_exception(self, renderer, monkeypatch):
+        """When an unexpected error occurs during rendering, wrap it in RenderError."""
+        def mock_shape(text):
+            raise RuntimeError("unexpected render failure")
+
+        monkeypatch.setattr(renderer, "_shape_text", mock_shape)
+        with pytest.raises(RenderError, match="unexpected render failure"):
+            renderer.render("\u0645\u0631\u062d\u0628\u0627")
+
 
 class TestRenderError:
     def test_render_error_is_exception(self):
