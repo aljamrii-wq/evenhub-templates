@@ -120,6 +120,47 @@ class TestModeEndpoint:
         assert data["confidence"] >= 0.8
 
 
+class TestSanitizeModeInputs:
+    """Test _sanitize_mode_inputs — input bounding and truncation."""
+
+    def test_device_info_truncation_excess_keys(self):
+        """Keys beyond MAX_DEVICE_INFO_KEYS (10) are dropped."""
+        from main import _sanitize_mode_inputs
+        device_info = {f'key_{i}': f'val_{i}' for i in range(20)}
+        safe_device_info, _ = _sanitize_mode_inputs(device_info, [])
+        assert len(safe_device_info) == 10
+
+    def test_device_info_value_truncation(self):
+        """Values longer than MAX_DEVICE_INFO_VALUE_CHARS (500) are truncated."""
+        from main import _sanitize_mode_inputs
+        device_info = {'long_key': 'A' * 600}
+        safe_device_info, _ = _sanitize_mode_inputs(device_info, [])
+        assert len(safe_device_info['long_key']) == 500
+
+    def test_interactions_truncation_excess_items(self):
+        """Interactions beyond MAX_INTERACTIONS (50) are dropped."""
+        from main import _sanitize_mode_inputs
+        interactions = [f'interaction_{i}' for i in range(100)]
+        _, safe_interactions = _sanitize_mode_inputs({}, interactions)
+        assert len(safe_interactions) == 50
+
+    def test_interaction_value_truncation(self):
+        """Interaction strings longer than MAX_INTERACTION_CHARS (1000) are truncated."""
+        from main import _sanitize_mode_inputs
+        interactions = ['A' * 1500]
+        _, safe_interactions = _sanitize_mode_inputs({}, interactions)
+        assert len(safe_interactions[0]) == 1000
+
+    def test_handles_non_string_values(self):
+        """Non-string device_info values are coerced to strings."""
+        from main import _sanitize_mode_inputs
+        device_info = {'num': 42, 'bool': True, 'none': None}
+        safe_device_info, _ = _sanitize_mode_inputs(device_info, [])
+        assert safe_device_info['num'] == '42'
+        assert safe_device_info['bool'] == 'True'
+        assert safe_device_info['none'] == 'None'
+
+
 class TestServerInfo:
     """Test server metadata."""
 
