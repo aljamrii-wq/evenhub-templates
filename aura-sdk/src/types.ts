@@ -1,5 +1,25 @@
 /** Core types for Aura SDK */
 
+// ---------------------------------------------------------------------------
+// JSON type safety
+// ---------------------------------------------------------------------------
+
+/**
+ * A proper JSON object type — rejects null, number, string, boolean, array.
+ * Use this instead of `any` or `object` when accepting JSON input.
+ *
+ * @example
+ *   // OK — compile-time and runtime safe
+ *   fromJson_TextContainerProperty({ containerID: 1 })
+ *
+ *   // Compile error — number is not a JsonObject
+ *   fromJson_TextContainerProperty(42)
+ *
+ *   // Compile error — null is not a JsonObject
+ *   fromJson_TextContainerProperty(null)
+ */
+export type JsonObject = Record<string, unknown>;
+
 export type Language = 'ar' | 'en' | 'ur' | 'fa' | 'hi';
 
 export type AuraMode = 'flydubai' | 'aljamri' | 'personal' | 'auto';

@@ -28,9 +28,24 @@ export class EvenAppBridge {
   onEvenHubEvent = jest.fn(() => () => {});
 }
 
-// Stub classes used by aura.ts
-export class CreateStartUpPageContainer { constructor(_?: any) {} }
-export class TextContainerUpgrade { constructor(_?: any) {} }
-export class ImageRawDataUpdate { constructor(_?: any) {} }
-export class ImageContainerProperty { constructor(_?: any) {} }
-export class TextContainerProperty { constructor(_?: any) {} }
+// Stub classes used by aura.ts — mirror Even Hub SDK shape
+export class CreateStartUpPageContainer {
+  constructor(_?: Record<string, unknown>) {}
+  static fromJson(_: Record<string, unknown>): CreateStartUpPageContainer { return new CreateStartUpPageContainer(); }
+}
+export class TextContainerUpgrade {
+  constructor(_?: Record<string, unknown>) {}
+  static fromJson(_: Record<string, unknown>): TextContainerUpgrade { return new TextContainerUpgrade(); }
+}
+export class ImageRawDataUpdate {
+  constructor(_?: Record<string, unknown>) {}
+  static fromJson(_: Record<string, unknown>): ImageRawDataUpdate { return new ImageRawDataUpdate(); }
+}
+export class ImageContainerProperty {
+  constructor(_?: Record<string, unknown>) {}
+  static fromJson(_: Record<string, unknown>): ImageContainerProperty { return new ImageContainerProperty(); }
+}
+export class TextContainerProperty {
+  constructor(_?: Record<string, unknown>) {}
+  static fromJson(_: Record<string, unknown>): TextContainerProperty { return new TextContainerProperty(); }
+}

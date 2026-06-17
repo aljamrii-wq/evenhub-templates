@@ -6,13 +6,15 @@
 import {
   waitForEvenAppBridge,
   type EvenAppBridge,
+  OsEventTypeList,
+} from '@evenrealities/even_hub_sdk';
+import {
   CreateStartUpPageContainer,
   TextContainerUpgrade,
   ImageRawDataUpdate,
   ImageContainerProperty,
   TextContainerProperty,
-  OsEventTypeList,
-} from '@evenrealities/even_hub_sdk';
+} from './models';
 import { ArabicRenderer } from './arabic';
 import { GestureEngine } from './gestures';
 import { HermesBridge } from './hermes';
@@ -90,7 +92,7 @@ export class Aura {
     }
 
     // Always register OS event handling (double-tap exit, system lifecycle)
-    this.eventUnsubscribe = this.bridge.onEvenHubEvent((event: any) => {
+    this.eventUnsubscribe = this.bridge.onEvenHubEvent((event: { sysEvent?: { eventType?: number; imuData?: { x?: number; y?: number; z?: number } }; textEvent?: { eventType?: number } }) => {
       const sysType = event.sysEvent?.eventType ?? null;
       const textType = event.textEvent?.eventType ?? null;
 
