@@ -169,7 +169,8 @@ class AuraWebSocketBridge:
 
         if proc.returncode != 0:
             err = stderr.decode("utf-8", errors="replace").strip()
-            raise RuntimeError(f"Hermes exited with code {proc.returncode}: {err}")
+            logger.error("Hermes exited with code %d: %s", proc.returncode, err)
+            raise RuntimeError(f"Hermes query failed (exit code {proc.returncode})")
 
         return stdout.decode("utf-8", errors="replace").strip()
 

@@ -74,8 +74,14 @@ class RenderRequest(BaseModel):
 
 
 class ModeRequest(BaseModel):
-    device_info: dict = Field(default_factory=dict)
-    recent_interactions: list[str] = Field(default_factory=list)
+    device_info: dict = Field(
+        default_factory=dict,
+        max_length=10,  # max keys in device_info dict
+    )
+    recent_interactions: list[str] = Field(
+        default_factory=list,
+        max_length=50,  # max number of interaction strings
+    )
 
 
 class RenderResponse(BaseModel):
@@ -133,14 +139,46 @@ async def render_text(req: RenderRequest):
     return RenderResponse(payload=encoded)
 
 
+def _sanitize_mode_inputs(device_info: dict, recent_interactions: list[str]) -> tuple[dict, list[str]]:
+    """Defensively bound and truncate mode detection inputs.
+
+    Enforces byte-level limits server-side (beyond Pydantic item-count checks).
+    """
+    MAX_DEVICE_INFO_KEYS = 10
+    MAX_DEVICE_INFO_VALUE_CHARS = 500
+    MAX_INTERACTIONS = 50
+    MAX_INTERACTION_CHARS = 1000
+
+    # Bound device_info keys and value lengths
+    safe_device_info: dict = {}
+    for k, v in device_info.items():
+        if len(safe_device_info) >= MAX_DEVICE_INFO_KEYS:
+            break
+        key = str(k)[:100]
+        val = str(v)[:MAX_DEVICE_INFO_VALUE_CHARS]
+        safe_device_info[key] = val
+
+    # Bound interaction count and per-interaction length
+    safe_interactions: list[str] = []
+    for item in recent_interactions:
+        if len(safe_interactions) >= MAX_INTERACTIONS:
+            break
+        safe_interactions.append(str(item)[:MAX_INTERACTION_CHARS])
+
+    return safe_device_info, safe_interactions
+
+
 @app.post("/mode", response_model=ModeResponse)
 async def detect_mode(req: ModeRequest):
     """Detect the user's current mode from context signals."""
     from datetime import datetime
+    safe_device_info, safe_interactions = _sanitize_mode_inputs(
+        req.device_info, req.recent_interactions,
+    )
     result = mode_detector.detect(
         current_time=datetime.now().time(),
-        device_info=req.device_info,
-        recent_interactions=req.recent_interactions,
+        device_info=safe_device_info,
+        recent_interactions=safe_interactions,
     )
     return ModeResponse(
         mode=result.mode.value,
@@ -152,26 +190,39 @@ async def detect_mode(req: ModeRequest):
 def _validate_ws_origin(websocket: WebSocket) -> None:
     """Validate the WebSocket connection is authorized.
 
-    If AURA_AUTH_TOKEN is set, requires ?token=<token> query parameter.
-    Otherwise, only allows connections from localhost/127.0.0.1.
+    Requires AURA_AUTH_TOKEN to be configured. Auth is via:
+    1. Authorization: Bearer *** header (preferred)
+    2. X-Aura-Token: <token> custom header (fallback for WS clients)
+
+    Fail-closed: if AURA_AUTH_TOKEN is not set, all connections are rejected.
+    Token in URL query params is NOT supported (leaks through proxy logs).
     """
-    if AURA_AUTH_TOKEN:
-        token = websocket.query_params.get("token", "")
-        if token != AURA_AUTH_TOKEN:
-            raise HTTPException(status_code=403, detail="Invalid or missing auth token")
-    else:
-        # Localhost-only when no auth token configured
-        host = websocket.client.host if websocket.client else ""
-        if host not in ("127.0.0.1", "::1", "localhost"):
-            raise HTTPException(status_code=403, detail="Remote connections require AURA_AUTH_TOKEN")
+    if not AURA_AUTH_TOKEN:
+        raise HTTPException(
+            status_code=503,
+            detail="AURA_AUTH_TOKEN not configured — server requires authentication",
+        )
+
+    token: str = ""
+    # 1. Try Authorization: Bearer *** first
+    auth_header = websocket.headers.get("authorization", "")
+    if auth_header.lower().startswith("bearer "):
+        token = auth_header[7:]
+    # 2. Fall back to custom X-Aura-Token header
+    if not token:
+        token = websocket.headers.get("x-aura-token", "")
+
+    if token != AURA_AUTH_TOKEN:
+        raise HTTPException(status_code=403, detail="Invalid or missing auth token")
 
 
 @app.websocket("/ws/aura")
 async def aura_websocket(websocket: WebSocket):
     """WebSocket endpoint for Aura SDK clients.
 
-    Auth: provide ?token=<AURA_AUTH_TOKEN> if AURA_AUTH_TOKEN is set.
-          Otherwise only localhost connections are allowed.
+    Auth: provide Authorization: Bearer <AURA_AUTH_TOKEN> header
+          or X-Aura-Token: <AURA_AUTH_TOKEN> custom header.
+          Fail-closed: connections rejected if AURA_AUTH_TOKEN is not configured.
 
     Accepts JSON AuraMessage frames and returns AuraResponse frames.
     Message format:
