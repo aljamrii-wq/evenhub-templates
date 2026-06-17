@@ -73,8 +73,34 @@ class TestRenderEndpoint:
         data = response.json()
         assert data["type"] == "bitmap"
 
+    def test_render_error_returns_400(self, client, monkeypatch):
+        """When the renderer raises RenderError, the endpoint returns 400."""
+        from unittest.mock import MagicMock
+        from renderer import RenderError
+
+        mock_renderer = MagicMock()
+        mock_renderer.render.side_effect = RenderError("simulated render failure")
+        mock_renderer.font_size = 28
+        monkeypatch.setattr("main.renderer", mock_renderer)
+
+        response = client.post("/render", json={"text": "trigger error"})
+        assert response.status_code == 400
+        assert "simulated render failure" in response.json()["detail"]
+
 
 class TestModeEndpoint:
+    def test_render_oversized_text_rejected(self, client):
+        """Oversized text should be rejected (422) before hitting PIL."""
+        big_text = "A" * 5001  # exceeds default _MAX_RENDER_CHARS of 5000
+        response = client.post("/render", json={"text": big_text})
+        assert response.status_code == 422
+
+    def test_render_max_boundary_ok(self, client):
+        """Text at exactly the max length should work."""
+        text = "A" * 5000
+        response = client.post("/render", json={"text": text})
+        assert response.status_code == 200
+
     """Test /mode endpoint."""
 
     def test_mode_detect_defaults(self, client):

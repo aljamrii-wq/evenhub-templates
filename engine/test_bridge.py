@@ -152,6 +152,16 @@ class TestAuraWebSocketBridge:
         assert resp.type == ResponseType.ERROR
         assert "too large" in resp.payload.lower()
 
+
+    @pytest.mark.asyncio
+    async def test_handle_mode_switch_invalid_json(self):
+        """Mode switch with non-JSON payload falls back to raw string."""
+        bridge = AuraWebSocketBridge(hermes_command="echo")
+        msg = AuraMessage(type=MessageType.MODE_SWITCH, payload="flydubai", mode=Mode.PERSONAL)
+        resp = await bridge.handle_message(msg)
+        assert resp.type == ResponseType.TEXT
+        assert "flydubai" in resp.payload
+
     @pytest.mark.asyncio
     async def test_payload_within_limit_accepted(self):
         """Payloads within max_message_bytes should be accepted."""
