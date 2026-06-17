@@ -7,3 +7,7 @@ package-lock.json
 .DS_Store
 .vite/
 *.ehpk
+__pycache__/
+.venv/
+.pytest_cache/
+*.pyc
