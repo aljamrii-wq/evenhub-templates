@@ -8,8 +8,7 @@
     "dist/"
   ],
   "scripts": {
-    "build": "tsc",
-    "prepare": "tsc",
+    "build": "tsc && node fix-esm-imports.mjs",
     "dev": "tsc --watch",
     "test": "jest"
   },
@@ -30,5 +29,12 @@
     "rtl",
     "hermes"
   ],
-  "license": "MIT"
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  }
 }

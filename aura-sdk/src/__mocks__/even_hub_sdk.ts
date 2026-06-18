@@ -2,14 +2,6 @@
 
 export const waitForEvenAppBridge = jest.fn();
 
-export const OsEventTypeList = {
-  CLICK_EVENT: 0,
-  DOUBLE_CLICK_EVENT: 1,
-  LONG_PRESS_EVENT: 2,
-  SYSTEM_EXIT_EVENT: 3,
-  ABNORMAL_EXIT_EVENT: 4,
-};
-
 export class EvenAppBridge {
   static getInstance(): EvenAppBridge { return new EvenAppBridge(); }
   _ready = true;
@@ -21,7 +13,7 @@ export class EvenAppBridge {
   updateImageRawData = jest.fn();
   textContainerUpgrade = jest.fn();
   audioControl = jest.fn();
-  imuControl = jest.fn().mockResolvedValue(undefined);
+  imuControl = jest.fn();
   shutDownPageContainer = jest.fn();
   onLaunchSource = jest.fn(() => () => {});
   onDeviceStatusChanged = jest.fn(() => () => {});

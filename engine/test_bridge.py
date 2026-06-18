@@ -7,14 +7,12 @@ from hermes_bridge import (
     AuraMessage, AuraResponse, MessageType, ResponseType,
     Mode, AuraWebSocketBridge,
 )
-from protocol import PROTOCOL_VERSION
 
 
 class TestMessageTypes:
     """Test message protocol definitions."""
 
     def test_message_type_enum(self):
-        assert MessageType.HELLO == "hello"
         assert MessageType.QUERY == "query"
         assert MessageType.ALERT == "alert"
         assert MessageType.MODE_SWITCH == "mode_switch"
@@ -37,7 +35,6 @@ class TestAuraMessage:
         msg = AuraMessage(type=MessageType.QUERY, payload="What time is it?", mode=Mode.PERSONAL)
         assert msg.type == MessageType.QUERY
         assert msg.payload == "What time is it?"
-        assert msg.version == PROTOCOL_VERSION  # default
 
     def test_valid_alert_message(self):
         msg = AuraMessage(type=MessageType.ALERT, payload="Flight EK123 delayed", mode=Mode.FLYDUBAI)
@@ -57,12 +54,6 @@ class TestAuraMessage:
         assert msg.type == MessageType.QUERY
         assert msg.payload == "Hello"
         assert msg.mode == Mode.PERSONAL
-        assert msg.version == PROTOCOL_VERSION  # default when not provided
-
-    def test_from_json_with_version(self):
-        data = {"type": "query", "payload": "Hello", "mode": "personal", "version": 1}
-        msg = AuraMessage.from_json(json.dumps(data))
-        assert msg.version == 1
 
     def test_from_json_invalid(self):
         with pytest.raises((ValueError, TypeError)):
@@ -130,6 +121,14 @@ class TestAuraWebSocketBridge:
         assert "aljamri" in resp.payload
 
     @pytest.mark.asyncio
+    async def test_handle_mode_switch_rejects_invalid_mode(self):
+        bridge = AuraWebSocketBridge(hermes_command="echo")
+        msg = AuraMessage(type=MessageType.MODE_SWITCH, payload='{"to": "not-a-mode"}', mode=Mode.PERSONAL)
+        resp = await bridge.handle_message(msg)
+        assert resp.type == ResponseType.ERROR
+        assert "invalid mode" in resp.payload.lower()
+
+    @pytest.mark.asyncio
     async def test_handle_unknown_type(self):
         bridge = AuraWebSocketBridge(hermes_command="echo")
         msg = AuraMessage(type=MessageType.QUERY, payload="test", mode=Mode.PERSONAL)
@@ -168,62 +167,3 @@ class TestAuraWebSocketBridge:
         msg = AuraMessage(type=MessageType.QUERY, payload="small payload", mode=Mode.PERSONAL)
         resp = await bridge.handle_message(msg)
         assert resp.type == ResponseType.TEXT
-
-    @pytest.mark.asyncio
-    async def test_hello_handshake_valid(self):
-        """Bridge should complete HELLO handshake and then process messages."""
-        bridge = AuraWebSocketBridge(hermes_command="echo")
-        # Verify bridge stores negotiated version after handshake
-        assert bridge._negotiated_version is None
-
-    @pytest.mark.asyncio
-    async def test_hello_message_type_exists(self):
-        """HELLO message type should be defined."""
-        assert MessageType.HELLO == "hello"
-
-    @pytest.mark.asyncio
-    async def test_negotiated_version_tracked(self):
-        """After handle_websocket processes HELLO, negotiated version is set."""
-        bridge = AuraWebSocketBridge(hermes_command="echo")
-
-        class MockWS:
-            def __init__(self):
-                self.sent = []
-                self.closed = False
-                self.close_code = None
-                self.messages = [
-                    json.dumps({"type": "hello", "version": 1, "client": "test", "capabilities": {}}),
-                    json.dumps({"type": "query", "payload": "ping", "mode": "personal"}),
-                ]
-                self._iter = iter(self.messages)
-
-            def __aiter__(self):
-                return self
-
-            async def __anext__(self):
-                try:
-                    return next(self._iter)
-                except StopIteration:
-                    raise StopAsyncIteration
-
-            async def send(self, data):
-                self.sent.append(data)
-
-            async def close(self, code=None, reason=None):
-                self.closed = True
-                self.close_code = code
-
-        ws = MockWS()
-        try:
-            await bridge.handle_websocket(ws)
-        except StopAsyncIteration:
-            pass
-
-        # First message sent should be hello_ack
-        assert len(ws.sent) >= 2
-        hello_ack = json.loads(ws.sent[0])
-        assert hello_ack["type"] == "hello_ack"
-        assert hello_ack["version"] == 1
-        # Second message should be the query response
-        query_resp = json.loads(ws.sent[1])
-        assert query_resp["type"] == "text"

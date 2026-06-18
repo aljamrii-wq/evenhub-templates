@@ -1,5 +1,5 @@
+import { waitForEvenAppBridge } from './bridge'
 import {
-  waitForEvenAppBridge,
   TextContainerProperty,
   ImageContainerProperty,
   ImageRawDataUpdate,

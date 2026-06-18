@@ -126,6 +126,27 @@ class TestArabicBitmapRenderer:
 
     # --- raw_bytes convenience ---
 
+    # --- render_png() tests ---
+
+    def test_render_png_returns_png_bytes(self, renderer):
+        png = renderer.render_png("Hello")
+        assert isinstance(png, bytes)
+        assert len(png) > 0
+        assert png[:4] == b"\x89PNG"
+
+    def test_render_png_arabic(self, renderer):
+        png = renderer.render_png("\u0645\u0631\u062d\u0628\u0627")
+        assert png[:4] == b"\x89PNG"
+        assert len(png) > 0
+
+    def test_render_png_empty_returns_valid_png(self, renderer):
+        png = renderer.render_png("")
+        assert png[:4] == b"\x89PNG"
+
+    def test_render_png_none_returns_valid_png(self, renderer):
+        png = renderer.render_png(None)
+        assert png[:4] == b"\x89PNG"
+
     def test_raw_bytes_method(self, renderer):
         result = renderer.raw_bytes("مرحبا")
         assert isinstance(result, bytes)

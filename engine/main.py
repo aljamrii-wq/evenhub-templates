@@ -2,7 +2,6 @@
 
 Endpoints:
 - GET  /health      — Health check with component status
-- GET  /caps        — Protocol version and server capabilities
 - POST /render      — Render text to 4-bit grayscale bitmap (base64)
 - POST /mode        — Detect user mode from context
 - WS   /ws/aura     — WebSocket bridge for Aura SDK clients
@@ -13,10 +12,10 @@ Run:
 """
 
 import base64
-import json
 import logging
 import os
 import re
+import secrets
 from contextlib import asynccontextmanager
 from typing import Optional
 
@@ -31,15 +30,6 @@ from hermes_bridge import (
 )
 from mode_detector import ModeDetector
 from session_store import SessionStore
-from protocol import (
-    PROTOCOL_VERSION,
-    SUPPORTED_VERSIONS,
-    SERVER_CAPABILITIES,
-    negotiate_version,
-    validate_hello,
-    build_hello_response,
-    build_hello_error,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -109,7 +99,6 @@ class ModeResponse(BaseModel):
 class HealthResponse(BaseModel):
     status: str
     version: str
-    protocol_version: int
     renderer: str
     mode_detector: str
 
@@ -118,43 +107,23 @@ class HealthResponse(BaseModel):
 
 @app.get("/health", response_model=HealthResponse)
 async def health():
-    """Health check with component status and protocol info."""
+    """Health check with component status."""
     return HealthResponse(
         status="ok",
         version=app.version,
-        protocol_version=PROTOCOL_VERSION,
         renderer="available",
         mode_detector="available",
     )
 
 
-
-class CapsResponse(BaseModel):
-    server: str
-    protocol_version: int
-    supported_versions: list[int]
-    capabilities: dict
-
-
-@app.get("/caps", response_model=CapsResponse)
-async def caps():
-    """Return protocol version and server capabilities for client discovery."""
-    return CapsResponse(
-        server="aura-engine",
-        protocol_version=PROTOCOL_VERSION,
-        supported_versions=SUPPORTED_VERSIONS,
-        capabilities=SERVER_CAPABILITIES,
-    )
-
-
-@app.post("/render", response_model=RenderResponse)
+@app.post("/render")
 async def render_text(req: RenderRequest):
-    """Render text to a 4-bit grayscale bitmap for Even G2 display.
+    """Render text to a PNG image for Even G2 display.
 
-    Returns a base64-encoded packed 4-bit grayscale bitmap
-    (576x288 pixels, 2 pixels per byte).
+    The Even Hub SDK's updateImageRawData expects encoded image bytes
+    (PNG/JPEG). Returns a PNG image with Content-Type: image/png.
     """
-    # Use a renderer with the requested font_size for this call
+    from fastapi.responses import Response
     try:
         if req.font_size != renderer.font_size:
             sized_renderer = ArabicBitmapRenderer(
@@ -162,13 +131,12 @@ async def render_text(req: RenderRequest):
                 height=renderer.height,
                 font_size=req.font_size,
             )
-            bitmap_bytes = sized_renderer.render(req.text)
+            png_bytes = sized_renderer.render_png(req.text)
         else:
-            bitmap_bytes = renderer.render(req.text)
+            png_bytes = renderer.render_png(req.text)
     except RenderError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    encoded = base64.b64encode(bitmap_bytes).decode("ascii")
-    return RenderResponse(payload=encoded)
+    return Response(content=png_bytes, media_type="image/png")
 
 
 def _sanitize_mode_inputs(device_info: dict, recent_interactions: list[str]) -> tuple[dict, list[str]]:
@@ -222,14 +190,22 @@ async def detect_mode(req: ModeRequest):
 def _validate_ws_origin(websocket: WebSocket) -> None:
     """Validate the WebSocket connection is authorized.
 
-    Requires AURA_AUTH_TOKEN to be configured. Auth is via:
+    When AURA_AUTH_TOKEN is configured, auth is via (in order):
     1. Authorization: Bearer *** header (preferred)
-    2. X-Aura-Token: <token> custom header (fallback for WS clients)
+    2. X-Aura-Token: <token> custom header
+    3. Sec-WebSocket-Protocol subprotocol aura-token.xxx (for browser-style clients)
 
-    Fail-closed: if AURA_AUTH_TOKEN is not set, all connections are rejected.
+    When AURA_AUTH_TOKEN is NOT set, only localhost connections are allowed
+    (matches documented behavior for local development).
+
     Token in URL query params is NOT supported (leaks through proxy logs).
     """
     if not AURA_AUTH_TOKEN:
+        # Allow localhost connections when no token configured
+        host = getattr(getattr(websocket, 'client', None), 'host', '')
+        if host in ('127.0.0.1', 'localhost', '::1'):
+            logger.debug("Allowing localhost WebSocket connection (no AURA_AUTH_TOKEN)")
+            return
         raise HTTPException(
             status_code=503,
             detail="AURA_AUTH_TOKEN not configured — server requires authentication",
@@ -243,8 +219,15 @@ def _validate_ws_origin(websocket: WebSocket) -> None:
     # 2. Fall back to custom X-Aura-Token header
     if not token:
         token = websocket.headers.get("x-aura-token", "")
+    # 3. Try WebSocket subprotocol auth (aura-token.xxx)
+    if not token:
+        subprotocols = websocket.scope.get("subprotocols", [])
+        for sp in subprotocols:
+            if sp.startswith("aura-token."):
+                token = sp[len("aura-token."):]
+                break
 
-    if token != AURA_AUTH_TOKEN:
+    if not secrets.compare_digest(token, AURA_AUTH_TOKEN):
         raise HTTPException(status_code=403, detail="Invalid or missing auth token")
 
 
@@ -252,9 +235,11 @@ def _validate_ws_origin(websocket: WebSocket) -> None:
 async def aura_websocket(websocket: WebSocket):
     """WebSocket endpoint for Aura SDK clients.
 
-    Auth: provide Authorization: Bearer <AURA_AUTH_TOKEN> header
-          or X-Aura-Token: <AURA_AUTH_TOKEN> custom header.
-          Fail-closed: connections rejected if AURA_AUTH_TOKEN is not configured.
+    Auth (when AURA_AUTH_TOKEN configured):
+      - Authorization: Bearer *** header (preferred)
+      - X-Aura-Token: <token> custom header
+      - Sec-WebSocket-Protocol: aura-token.<token> subprotocol (SDK clients)
+    When AURA_AUTH_TOKEN is not set, only localhost connections allowed.
 
     Accepts JSON AuraMessage frames and returns AuraResponse frames.
     Message format:
@@ -280,35 +265,6 @@ async def aura_websocket(websocket: WebSocket):
                 continue
 
             try:
-                data = json.loads(raw)
-
-                # Handle HELLO handshake on WebSocket
-                if data.get("type") == "hello":
-                    err = validate_hello(data)
-                    if err:
-                        resp = build_hello_error(err)
-                        await websocket.send_text(json.dumps(resp))
-                        await websocket.close(code=4000, reason=err)
-                        return
-                    client_version = data["version"]
-                    negotiated = negotiate_version(client_version)
-                    if negotiated is None:
-                        resp = build_hello_error(
-                            f"Unsupported protocol version {client_version}. "
-                            f"Server supports: {PROTOCOL_VERSION}"
-                        )
-                        await websocket.send_text(json.dumps(resp))
-                        await websocket.close(code=4000, reason=f"Version {client_version} not supported")
-                        return
-                    resp = build_hello_response(negotiated)
-                    await websocket.send_text(json.dumps(resp))
-                    logger.info(
-                        "WebSocket HELLO handshake complete — version %d from %s",
-                        negotiated, data.get("client", "unknown"),
-                    )
-                    continue
-
-                # Normal message handling
                 msg = AuraMessage.from_json(raw)
                 response = await bridge.handle_message(msg)
                 await websocket.send_text(response.to_json())

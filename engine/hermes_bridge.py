@@ -3,10 +3,6 @@
 Accepts WebSocket connections from Aura SDK clients (smart glasses)
 and routes messages to the main Hermes Agent process.
 Returns display-ready payloads (text or bitmap).
-
-Protocol handshake:
-  Client sends HELLO -> server validates version/caps -> server responds hello_ack.
-  After handshake, normal messages (query/alert/mode_switch) flow.
 """
 
 import asyncio
@@ -19,19 +15,11 @@ from enum import Enum
 from pydantic import BaseModel, Field, ValidationError
 
 from renderer import ArabicBitmapRenderer
-from protocol import (
-    PROTOCOL_VERSION,
-    negotiate_version,
-    validate_hello,
-    build_hello_response,
-    build_hello_error,
-)
 
 logger = logging.getLogger(__name__)
 
 
 class MessageType(str, Enum):
-    HELLO = "hello"
     QUERY = "query"
     ALERT = "alert"
     MODE_SWITCH = "mode_switch"
@@ -53,7 +41,6 @@ class AuraMessage(BaseModel):
     """Incoming message from Aura SDK client."""
     type: MessageType
     payload: str
-    version: int = PROTOCOL_VERSION
     mode: Mode = Mode.PERSONAL
 
     @classmethod
@@ -101,7 +88,6 @@ class AuraWebSocketBridge:
         self.renderer = renderer or ArabicBitmapRenderer()
         self.max_message_bytes = max_message_bytes
         self.context: dict = {}
-        self._negotiated_version: int | None = None
 
     async def handle_message(self, msg: AuraMessage) -> AuraResponse:
         """Route an incoming Aura message to the appropriate handler."""
@@ -145,12 +131,19 @@ class AuraWebSocketBridge:
         """Handle a mode switch request."""
         try:
             switch_data = json.loads(msg.payload)
-            new_mode = switch_data.get("to", msg.mode.value)
+            raw_mode = switch_data.get("to", msg.mode.value)
         except json.JSONDecodeError:
-            new_mode = msg.payload
-        self.context["last_mode"] = new_mode
-        logger.info("Mode switched to: %s", new_mode)
-        return AuraResponse(type=ResponseType.TEXT, payload=f"Mode switched to {new_mode}")
+            raw_mode = msg.payload
+
+        try:
+            validated_mode = Mode(raw_mode)
+        except ValueError as exc:
+            raise ValueError(f"Invalid mode: {raw_mode}") from exc
+
+        mode_value = validated_mode.value
+        self.context["last_mode"] = mode_value
+        logger.info("Mode switched to: %s", mode_value)
+        return AuraResponse(type=ResponseType.TEXT, payload=f"Mode switched to {mode_value}")
 
     def _build_prompt(self, msg: AuraMessage) -> str:
         """Build a prompt string for Hermes with context."""
@@ -189,7 +182,7 @@ class AuraWebSocketBridge:
         return stdout.decode("utf-8", errors="replace").strip()
 
     async def handle_websocket(self, websocket) -> None:
-        """Handle a single WebSocket connection lifecycle with HELLO handshake.
+        """Handle a single WebSocket connection lifecycle.
 
         Args:
             websocket: A websockets.WebSocketServerProtocol instance.
@@ -197,36 +190,6 @@ class AuraWebSocketBridge:
         try:
             async for raw_message in websocket:
                 try:
-                    data = json.loads(raw_message)
-
-                    # Handle HELLO handshake
-                    if data.get("type") == "hello":
-                        err = validate_hello(data)
-                        if err:
-                            resp = build_hello_error(err)
-                            await websocket.send(json.dumps(resp))
-                            await websocket.close(code=4000, reason=err)
-                            return
-                        client_version = data["version"]
-                        negotiated = negotiate_version(client_version)
-                        if negotiated is None:
-                            resp = build_hello_error(
-                                f"Unsupported protocol version {client_version}. "
-                                f"Server supports: {PROTOCOL_VERSION}"
-                            )
-                            await websocket.send(json.dumps(resp))
-                            await websocket.close(code=4000, reason=f"Version {client_version} not supported")
-                            return
-                        resp = build_hello_response(negotiated)
-                        await websocket.send(json.dumps(resp))
-                        self._negotiated_version = negotiated
-                        logger.info(
-                            "HELLO handshake complete — version %d from %s",
-                            negotiated, data.get("client", "unknown"),
-                        )
-                        continue
-
-                    # Normal message handling
                     msg = AuraMessage.from_json(raw_message)
                     response = await self.handle_message(msg)
                     await websocket.send(response.to_json())

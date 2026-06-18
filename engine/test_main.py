@@ -27,8 +27,6 @@ class TestHealthEndpoint:
         response = client.get("/health")
         data = response.json()
         assert "version" in data
-        assert "protocol_version" in data
-        assert data["protocol_version"] >= 1
 
     def test_health_includes_components(self, client):
         response = client.get("/health")
@@ -38,28 +36,25 @@ class TestHealthEndpoint:
 
 
 class TestRenderEndpoint:
-    """Test /render POST endpoint."""
+    """Test /render POST endpoint — returns PNG image bytes."""
 
-    def test_render_text_returns_bitmap(self, client):
+    def test_render_text_returns_png(self, client):
         response = client.post("/render", json={"text": "Hello"})
         assert response.status_code == 200
-        data = response.json()
-        assert data["type"] == "bitmap"
-        assert "payload" in data
-        # Payload should be base64-encoded bytes
-        assert len(data["payload"]) > 0
+        assert response.headers["content-type"] == "image/png"
+        assert response.content[:4] == b"\x89PNG"
 
     def test_render_arabic_text(self, client):
         response = client.post("/render", json={"text": "\u0645\u0631\u062d\u0628\u0627"})
         assert response.status_code == 200
-        data = response.json()
-        assert data["type"] == "bitmap"
+        assert response.headers["content-type"] == "image/png"
+        assert response.content[:4] == b"\x89PNG"
 
     def test_render_empty_text(self, client):
         response = client.post("/render", json={"text": ""})
         assert response.status_code == 200
-        data = response.json()
-        assert data["type"] == "bitmap"
+        assert response.headers["content-type"] == "image/png"
+        assert response.content[:4] == b"\x89PNG"
 
     def test_render_missing_text_field(self, client):
         response = client.post("/render", json={})
@@ -72,8 +67,22 @@ class TestRenderEndpoint:
     def test_render_with_font_size(self, client):
         response = client.post("/render", json={"text": "Test", "font_size": 18})
         assert response.status_code == 200
-        data = response.json()
-        assert data["type"] == "bitmap"
+        assert response.headers["content-type"] == "image/png"
+        assert response.content[:4] == b"\x89PNG"
+
+    def test_render_error_returns_400(self, client, monkeypatch):
+        """When the renderer raises RenderError, the endpoint returns 400."""
+        from unittest.mock import MagicMock
+        from renderer import RenderError
+
+        mock_renderer = MagicMock()
+        mock_renderer.render_png.side_effect = RenderError("simulated render failure")
+        mock_renderer.font_size = 28
+        monkeypatch.setattr("main.renderer", mock_renderer)
+
+        response = client.post("/render", json={"text": "trigger error"})
+        assert response.status_code == 400
+        assert "simulated render failure" in response.json()["detail"]
 
 
 class TestModeEndpoint:
@@ -88,6 +97,7 @@ class TestModeEndpoint:
         text = "A" * 5000
         response = client.post("/render", json={"text": text})
         assert response.status_code == 200
+        assert response.headers["content-type"] == "image/png"
 
     """Test /mode endpoint."""
 
@@ -110,36 +120,45 @@ class TestModeEndpoint:
         assert data["confidence"] >= 0.8
 
 
+class TestSanitizeModeInputs:
+    """Test _sanitize_mode_inputs — input bounding and truncation."""
 
-class TestCapsEndpoint:
-    """Test /caps endpoint."""
+    def test_device_info_truncation_excess_keys(self):
+        """Keys beyond MAX_DEVICE_INFO_KEYS (10) are dropped."""
+        from main import _sanitize_mode_inputs
+        device_info = {f'key_{i}': f'val_{i}' for i in range(20)}
+        safe_device_info, _ = _sanitize_mode_inputs(device_info, [])
+        assert len(safe_device_info) == 10
 
-    def test_caps_returns_200(self, client):
-        response = client.get("/caps")
-        assert response.status_code == 200
+    def test_device_info_value_truncation(self):
+        """Values longer than MAX_DEVICE_INFO_VALUE_CHARS (500) are truncated."""
+        from main import _sanitize_mode_inputs
+        device_info = {'long_key': 'A' * 600}
+        safe_device_info, _ = _sanitize_mode_inputs(device_info, [])
+        assert len(safe_device_info['long_key']) == 500
 
-    def test_caps_returns_json(self, client):
-        response = client.get("/caps")
-        data = response.json()
-        assert data["server"] == "aura-engine"
-        assert "protocol_version" in data
-        assert data["protocol_version"] >= 1
+    def test_interactions_truncation_excess_items(self):
+        """Interactions beyond MAX_INTERACTIONS (50) are dropped."""
+        from main import _sanitize_mode_inputs
+        interactions = [f'interaction_{i}' for i in range(100)]
+        _, safe_interactions = _sanitize_mode_inputs({}, interactions)
+        assert len(safe_interactions) == 50
 
-    def test_caps_includes_supported_versions(self, client):
-        response = client.get("/caps")
-        data = response.json()
-        assert "supported_versions" in data
-        assert isinstance(data["supported_versions"], list)
-        assert data["protocol_version"] in data["supported_versions"]
+    def test_interaction_value_truncation(self):
+        """Interaction strings longer than MAX_INTERACTION_CHARS (1000) are truncated."""
+        from main import _sanitize_mode_inputs
+        interactions = ['A' * 1500]
+        _, safe_interactions = _sanitize_mode_inputs({}, interactions)
+        assert len(safe_interactions[0]) == 1000
 
-    def test_caps_includes_capabilities(self, client):
-        response = client.get("/caps")
-        data = response.json()
-        assert "capabilities" in data
-        caps = data["capabilities"]
-        assert "render" in caps
-        assert "mode_detection" in caps
-        assert "bridge" in caps
+    def test_handles_non_string_values(self):
+        """Non-string device_info values are coerced to strings."""
+        from main import _sanitize_mode_inputs
+        device_info = {'num': 42, 'bool': True, 'none': None}
+        safe_device_info, _ = _sanitize_mode_inputs(device_info, [])
+        assert safe_device_info['num'] == '42'
+        assert safe_device_info['bool'] == 'True'
+        assert safe_device_info['none'] == 'None'
 
 
 class TestServerInfo:
@@ -155,7 +174,6 @@ class TestServerInfo:
         assert "/render" in schema["paths"]
         assert "/mode" in schema["paths"]
         assert "/health" in schema["paths"]
-        assert "/caps" in schema["paths"]
         # WebSocket routes do not appear in OpenAPI schema (expected)
 
     def test_docs_accessible(self, client):
@@ -164,84 +182,61 @@ class TestServerInfo:
 
 
 class TestWebSocketAuth:
-    """Test WebSocket auth/origin gating."""
+    """Test WebSocket auth/origin gating — fail-closed, header-based."""
 
-    def test_ws_rejected_when_no_token_configured(self):
-        """Fail-closed: when AURA_AUTH_TOKEN is empty, ALL connections rejected."""
-        # Even localhost should be rejected when no token is set
+    def test_ws_valid_bearer_token_allows_connection(self):
+        """Valid Authorization: Bearer *** allows connection."""
+        import main
+        from main import _validate_ws_origin
+        from unittest.mock import MagicMock
+        original_token = main.AURA_AUTH_TOKEN
+        try:
+            main.AURA_AUTH_TOKEN = "secret123"
+            ws = MagicMock()
+            ws.headers = {"authorization": "Bearer secret123", "x-aura-token": ""}
+            # Should not raise
+            _validate_ws_origin(ws)
+        finally:
+            main.AURA_AUTH_TOKEN = original_token
+
+    def test_ws_valid_x_aura_token_allows_connection(self):
+        """Valid X-Aura-Token custom header allows connection."""
+        import main
+        from main import _validate_ws_origin
+        from unittest.mock import MagicMock
+        original_token = main.AURA_AUTH_TOKEN
+        try:
+            main.AURA_AUTH_TOKEN = "secret123"
+            ws = MagicMock()
+            ws.headers = {"authorization": "", "x-aura-token": "secret123"}
+            # Should not raise
+            _validate_ws_origin(ws)
+        finally:
+            main.AURA_AUTH_TOKEN = original_token
+
+    def test_ws_blocked_when_token_not_configured(self):
+        """Fail-closed: 503 when AURA_AUTH_TOKEN is empty."""
+        import main
         from main import _validate_ws_origin
         from fastapi import HTTPException
         from unittest.mock import MagicMock
-        import main
         import pytest
         original_token = main.AURA_AUTH_TOKEN
         try:
             main.AURA_AUTH_TOKEN = ""
             ws = MagicMock()
-            ws.headers = MagicMock()
-            ws.headers.get.return_value = ""
+            ws.headers = {"authorization": "", "x-aura-token": ""}
             with pytest.raises(HTTPException) as exc:
                 _validate_ws_origin(ws)
             assert exc.value.status_code == 503
-        finally:
-            main.AURA_AUTH_TOKEN = original_token
-
-    def test_ws_blocked_when_no_auth_header(self):
-        """When AURA_AUTH_TOKEN is set but no auth header provided, blocked."""
-        from main import _validate_ws_origin
-        from fastapi import HTTPException
-        from unittest.mock import MagicMock
-        import main
-        import pytest
-        original_token = main.AURA_AUTH_TOKEN
-        try:
-            main.AURA_AUTH_TOKEN = "secret123"
-            ws = MagicMock()
-            ws.headers = MagicMock()
-            ws.headers.get.return_value = ""  # no auth header
-            with pytest.raises(HTTPException) as exc:
-                _validate_ws_origin(ws)
-            assert exc.value.status_code == 403
-        finally:
-            main.AURA_AUTH_TOKEN = original_token
-
-    def test_ws_auth_bearer_header_allowed(self):
-        """Valid Bearer token in Authorization header should allow connection."""
-        import main
-        from unittest.mock import MagicMock
-        original_token = main.AURA_AUTH_TOKEN
-        try:
-            main.AURA_AUTH_TOKEN = "secret123"
-            ws = MagicMock()
-            ws.headers = MagicMock()
-            ws.headers.get.side_effect = lambda key, default="": (
-                "Bearer secret123" if key == "authorization" else default
-            )
-            # Should not raise
-            main._validate_ws_origin(ws)
-        finally:
-            main.AURA_AUTH_TOKEN = original_token
-
-    def test_ws_auth_x_aura_token_header_allowed(self):
-        """Valid token in X-Aura-Token custom header should allow connection."""
-        import main
-        from unittest.mock import MagicMock
-        original_token = main.AURA_AUTH_TOKEN
-        try:
-            main.AURA_AUTH_TOKEN = "secret123"
-            ws = MagicMock()
-            ws.headers = MagicMock()
-            ws.headers.get.side_effect = lambda key, default="": (
-                "secret123" if key == "x-aura-token" else default
-            )
-            # Should not raise
-            main._validate_ws_origin(ws)
+            assert "not configured" in exc.value.detail
         finally:
             main.AURA_AUTH_TOKEN = original_token
 
     def test_ws_wrong_token_rejected(self):
-        """Wrong token should be rejected (header auth)."""
+        """Wrong token returns 403."""
         import main
+        from main import _validate_ws_origin
         from fastapi import HTTPException
         from unittest.mock import MagicMock
         import pytest
@@ -249,12 +244,10 @@ class TestWebSocketAuth:
         try:
             main.AURA_AUTH_TOKEN = "secret123"
             ws = MagicMock()
-            ws.headers = MagicMock()
-            ws.headers.get.side_effect = lambda key, default="": (
-                "Bearer wrong" if key == "authorization" else default
-            )
+            ws.headers = {"authorization": "Bearer wrongtoken", "x-aura-token": ""}
             with pytest.raises(HTTPException) as exc:
-                main._validate_ws_origin(ws)
+                _validate_ws_origin(ws)
             assert exc.value.status_code == 403
+            assert "Invalid" in exc.value.detail
         finally:
             main.AURA_AUTH_TOKEN = original_token

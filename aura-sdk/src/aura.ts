@@ -11,20 +11,19 @@ import {
   ImageRawDataUpdate,
   ImageContainerProperty,
   TextContainerProperty,
-  OsEventTypeList,
+  type DeviceInfo,
 } from '@evenrealities/even_hub_sdk';
 import { ArabicRenderer } from './arabic';
 import { GestureEngine } from './gestures';
 import { HermesBridge } from './hermes';
 import { ModeDetector } from './modes';
 
-import type { AuraConfig, AuraMode, Language, HermesMessage, AuraResponse, GestureEvent, ModeContext } from './types';
-import { PROTOCOL_VERSION } from './types';
+import type { AuraConfig, AuraMode, Language, HermesMessage, HermesResponse, GestureEvent, ModeContext } from './types';
 
 const DEFAULTS: AuraConfig = {
   lang: 'ar',
   mode: 'auto',
-  hermesUrl: 'wss://hermes.aljamrigroup.com/aura',
+  hermesUrl: 'wss://hermes.aljamrigroup.com/ws/aura',
   gestures: true,
   alwaysListen: false,
 };
@@ -37,26 +36,28 @@ export class Aura {
   private modes: ModeDetector;
   private config: AuraConfig;
   private ready = false;
+  private disposed = false;
 
   // Container tracking
   private containerId: number | null = null;
-
-  // Cleanup handles
-  private eventUnsubscribe: (() => void) | null = null;
-  private disposed = false;
 
   // Callbacks
   private onNodCb: (() => void) | null = null;
   private onShakeCb: (() => void) | null = null;
   private onModeChangeCb: ((mode: ModeContext) => void) | null = null;
-  private onMessageCb: ((msg: AuraResponse) => void) | null = null;
-  private onExitCb: (() => void) | null = null;
+  private onMessageCb: ((msg: HermesResponse) => void) | null = null;
 
   constructor(config: Partial<AuraConfig> = {}) {
     this.config = { ...DEFAULTS, ...config };
-    this.arabic = new ArabicRenderer(this.config.lang);
+    // Derive HTTP render URL from WebSocket URL.
+    // wss:// → https://, ws:// → http://, then swap /ws/aura → /render
+    const renderUrl = this.config.hermesUrl
+      .replace(/^wss:/, 'https:')
+      .replace(/^ws:/, 'http:')
+      .replace(/\/ws\/aura$/, '/render');
+    this.arabic = new ArabicRenderer(this.config.lang, renderUrl);
     this.gestures = new GestureEngine();
-    this.hermes = new HermesBridge(this.config.hermesUrl);
+    this.hermes = new HermesBridge(this.config.hermesUrl, this.config.token);
     this.modes = new ModeDetector();
   }
 
@@ -67,7 +68,7 @@ export class Aura {
 
     // Create startup page container (required before any display operations)
     const container = new CreateStartUpPageContainer({
-      containerTotalNum: 1,
+      containerTotalNum: 2,
       textObject: [new TextContainerProperty({
         containerID: 1,
         containerName: 'aura',
@@ -90,40 +91,6 @@ export class Aura {
       throw new Error(`Failed to create page container: ${result}`);
     }
 
-    // Always register OS event handling (double-tap exit, system lifecycle)
-    this.eventUnsubscribe = this.bridge.onEvenHubEvent((event: any) => {
-      const sysType = event.sysEvent?.eventType ?? null;
-      const textType = event.textEvent?.eventType ?? null;
-
-      // Double-tap exits the app from any event envelope
-      if (sysType === OsEventTypeList.DOUBLE_CLICK_EVENT ||
-          textType === OsEventTypeList.DOUBLE_CLICK_EVENT) {
-        this.onExitCb?.();
-        this.bridge?.shutDownPageContainer(1);
-        return;
-      }
-
-      // System lifecycle events — clean up
-      if (sysType === OsEventTypeList.SYSTEM_EXIT_EVENT ||
-          sysType === OsEventTypeList.ABNORMAL_EXIT_EVENT) {
-        this.dispose();
-        return;
-      }
-
-      // IMU gesture detection
-      if (this.config.gestures) {
-        const imu = event.sysEvent?.imuData;
-        if (imu) {
-          const x = imu.x ?? 0;
-          const y = imu.y ?? 0;
-          const z = imu.z ?? 0;
-          const gesture = this.gestures.process(x, y, z);
-          if (gesture.type === 'nod') this.onNodCb?.();
-          if (gesture.type === 'shake') this.onShakeCb?.();
-        }
-      }
-    });
-
     // Mode detection from device + time
     if (this.config.mode === 'auto') {
       const info = await this.bridge.getDeviceInfo();
@@ -138,11 +105,26 @@ export class Aura {
         this.modes.start({}, now);
       }
       this.modes.onChange((ctx) => this.onModeChangeCb?.(ctx));
+    } else {
+      // Force the configured mode (not 'auto')
+      this.modes.forceMode(this.config.mode as AuraMode);
     }
 
-    // Enable IMU if gesture detection is on
+    // IMU gesture detection
     if (this.config.gestures) {
       await this.bridge.imuControl(true, 500);
+      this.bridge.onEvenHubEvent((event) => {
+        if (this.disposed) return;
+        const imu = event.sysEvent?.imuData;
+        if (imu) {
+          const x = imu.x ?? 0;
+          const y = imu.y ?? 0;
+          const z = imu.z ?? 0;
+          const gesture = this.gestures.process(x, y, z);
+          if (gesture.type === 'nod') this.onNodCb?.();
+          if (gesture.type === 'shake') this.onShakeCb?.();
+        }
+      });
     }
 
     // Hermes connection
@@ -152,38 +134,42 @@ export class Aura {
     this.ready = true;
   }
 
-  /** Dispose all resources — stops intervals, disconnects WebSocket, cleans up bridge */
+  /** Dispose all persistent resources — call before re-init or teardown.
+   *  Stops mode-detection timer, disconnects WebSocket, stops IMU,
+   *  nulls all callbacks, and releases the Even bridge. Safe to call
+   *  multiple times; idempotent after the first call. */
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
 
-    // Stop mode detection interval
     this.modes.stop();
-
-    // Disconnect Hermes WebSocket
     this.hermes.disconnect();
 
-    // Unsubscribe from Even Hub events
-    this.eventUnsubscribe?.();
-    this.eventUnsubscribe = null;
-
-    // Disable IMU
-    if (this.bridge && this.config.gestures) {
-      this.bridge.imuControl(false, 500).catch(() => {});
+    // Stop IMU streaming if active
+    if (this.bridge) {
+      this.bridge.imuControl(false).catch(() => {});
     }
 
+    // Null callbacks so stale event listeners are no-ops
+    this.onNodCb = null;
+    this.onShakeCb = null;
+    this.onModeChangeCb = null;
+    this.onMessageCb = null;
+
     this.ready = false;
+    this.bridge = null;
   }
 
   /** Show text on glasses — auto-detects language, renders Arabic as image if needed */
   async show(text: string, lang?: Language): Promise<void> {
+    if (this.disposed) throw new Error('Aura has been disposed');
     if (!this.bridge) throw new Error('Aura not initialized');
 
     const language = lang || this.config.lang;
 
     if (language === 'ar' || language === 'ur' || language === 'fa') {
       // Render as image for RTL/connected scripts
-      const pixels = await this.arabic.render(text);
+      const pixels = await this.arabic.render(text, undefined, language);
       const update = new ImageRawDataUpdate({
         containerID: 2,
         containerName: 'aura-img',
@@ -203,10 +189,10 @@ export class Aura {
 
   /** Ask Hermes — voice question, response on display */
   async ask(question: string, lang?: Language): Promise<void> {
+    if (this.disposed) throw new Error('Aura has been disposed');
     const msg: HermesMessage = {
       type: 'query',
       payload: question,
-      version: this.hermes.version ?? PROTOCOL_VERSION,
       mode: this.modes.current,
     };
     this.hermes.send(msg);
@@ -214,10 +200,10 @@ export class Aura {
 
   /** Send an alert card to display */
   async alert(title: string, body: string, lang?: Language): Promise<void> {
+    if (this.disposed) throw new Error('Aura has been disposed');
     const msg: HermesMessage = {
       type: 'alert',
       payload: `${title}\n${body}`,
-      version: this.hermes.version ?? PROTOCOL_VERSION,
       mode: this.modes.current,
     };
     this.hermes.send(msg);
@@ -228,14 +214,11 @@ export class Aura {
   onNod(cb: () => void): void { this.onNodCb = cb; }
   onShake(cb: () => void): void { this.onShakeCb = cb; }
   onModeChange(cb: (mode: ModeContext) => void): void { this.onModeChangeCb = cb; }
-  onMessage(cb: (msg: AuraResponse) => void): void { this.onMessageCb = cb; }
-
-  /** Register callback for app exit (double-tap or system-initiated) */
-  onExit(cb: () => void): void { this.onExitCb = cb; }
+  onMessage(cb: (msg: HermesResponse) => void): void { this.onMessageCb = cb; }
 
   // --- Properties ---
 
   get currentMode(): AuraMode { return this.modes.current; }
-  get isReady(): boolean { return this.ready; }
+  get isReady(): boolean { return this.ready && !this.disposed; }
   get bridgeInstance(): EvenAppBridge | null { return this.bridge; }
 }
