@@ -140,9 +140,9 @@ So on iOS, **`glassesConnected` fires after the central links both peripherals**
 
 ## 8. Known implementation caveats
 
-1. **Mismatched “connected” timing** between Android and iOS (§6.4): Flutter may think both sides are ready before iOS finishes GATT setup.
+1. **Platform timing mismatch** during connect: Flutter may report connected before native iOS finishes GATT setup.
 2. **`BleManager.isBothConnected()`** is hard-coded `true` in Dart (TODO)—unsafe if you rely on real link state.
-3. **First packet bytes**: Android `0xF4 0x01` vs iOS `0x4d 0x01`—align with firmware docs if the protocol is strict.
+3. **First packet bytes**: iOS uses `0x4d 0x01` for init—align with your firmware docs.
 
 ---
 
@@ -151,9 +151,6 @@ So on iOS, **`glassesConnected` fires after the central links both peripherals**
 | Area | Path |
 |------|------|
 | Dart BLE facade | `lib/ble_manager.dart` |
-| Android BLE core | `android/app/src/main/kotlin/com/example/demo_ai_even/bluetooth/BleManager.kt` |
-| Android channel | `android/app/src/main/kotlin/com/example/demo_ai_even/bluetooth/BleChannelHelper.kt` |
-| Android models | `android/app/src/main/kotlin/com/example/demo_ai_even/model/BleDevice.kt`, `BlePairDevice.kt` |
 | iOS BLE core | `ios/Runner/BluetoothManager.swift` |
 | iOS UUID constants | `ios/Runner/ServiceIdentifiers.swift` |
 | iOS channel registration | `ios/Runner/AppDelegate.swift` |

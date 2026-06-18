@@ -31,10 +31,10 @@ class _NotificationState extends State<NotificationPage> {
   @override
   void initState() {
     //  1、Init app whitelist
-    final evenModel = NotifyAppModel("com.even.test", "Even");
-    final youToBeModel =
-        NotifyAppModel("com.google.android.youtube", "YouToBe");
-    appWhitelist = NotifyWhitelistModel([evenModel, youToBeModel]).toShowJson();
+    final evenModel = NotifyAppModel("com.even.test", "Aura");
+    final appSampleModel =
+        NotifyAppModel("com.apple.MobileSMS", "Messages");
+    appWhitelist = NotifyWhitelistModel([evenModel, appSampleModel]).toShowJson();
     identifierCtl = TextEditingController(text: appWhitelist);
     //  2、Init notify content
     final testNotify = NotifyModel(

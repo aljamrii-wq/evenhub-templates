@@ -141,9 +141,9 @@ iOS 在 `didDiscoverCharacteristicsFor` 中：区分左右 `CBPeripheral`，保�
 
 ## 8. 已知实现注意点（便于后续维护）
 
-1. **Android / iOS「已连接」判定时机不一致**（见 §6.4），可能导致 Flutter 侧认为已连接时，某一侧尚未完成订阅或写通道就绪。
+1. **Flutter 与 iOS 连接时机不一致**（见 §6.4）：Flutter 侧可能先判定已连接，而原生 iOS 侧尚未完成订阅或写通道就绪。
 2. **`BleManager.isBothConnected()`** 在 Dart 中恒为 `true`（TODO），依赖原生真实连接状态时需谨慎。
-3. **首包指令**：Android `0xF4 0x01` vs iOS `0x4d 0x01`，若与固件协议强绑定需与硬件文档对齐。
+3. **首包指令**：iOS 使用 `0x4d 0x01`，若与固件协议强绑定需与硬件文档对齐。
 
 ---
 
@@ -152,9 +152,6 @@ iOS 在 `didDiscoverCharacteristicsFor` 中：区分左右 `CBPeripheral`，保�
 | 模块 | 路径 |
 |------|------|
 | Dart BLE 门面 | `lib/ble_manager.dart` |
-| Android BLE 核心 | `android/app/src/main/kotlin/com/example/demo_ai_even/bluetooth/BleManager.kt` |
-| Android Channel | `android/app/src/main/kotlin/com/example/demo_ai_even/bluetooth/BleChannelHelper.kt` |
-| Android 设备模型 | `android/app/src/main/kotlin/com/example/demo_ai_even/model/BleDevice.kt`, `BlePairDevice.kt` |
 | iOS BLE 核心 | `ios/Runner/BluetoothManager.swift` |
 | iOS UUID 常量 | `ios/Runner/ServiceIdentifiers.swift` |
 | iOS Channel 注册 | `ios/Runner/AppDelegate.swift` |

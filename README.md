@@ -4,35 +4,32 @@
 
 ## Architecture
 
-```
+```text
 lib/
-├── main.dart              # Entry point → MaterialApp with Aura theme
-├── app.dart               # App-level lifecycle (exit all, cleanup)
-├── ble_manager.dart       # BLE: scan, connect, send, receive, heartbeat
+├── main.dart                    # Entry point → MaterialApp with Aura theme
+├── app.dart                     # App-level lifecycle (exit all, cleanup)
+├── ble_manager.dart             # BLE: scan, connect, send, receive, heartbeat
 ├── services/
-│   ├── proto.dart         # BLE command encoding (heartbeat, AI, display)
-│   ├── ble.dart           # BleReceive / BleDevice type definitions
-│   ├── evenai.dart        # AI flow controller (mic, speech, render pipeline)
-│   ├── evenai_proto.dart  # Multi-pack BLE data formatting
+│   ├── proto.dart               # BLE command encoding (heartbeat, AI, display)
+│   ├── ble.dart                 # BleReceive / BleDevice type definitions
+│   ├── evenai.dart              # AI flow controller (mic, speech, render)
+│   ├── evenai_proto.dart        # Multi-pack BLE data formatting
 │   ├── aura_engine_service.dart  # Aura Engine HTTP client (replaces DeepSeek)
-│   ├── api_services.dart        # [LEGACY] DashScope API (not used)
-│   ├── api_services_deepseek.dart # [LEGACY] DeepSeek API (not used)
-│   ├── text_service.dart  # Text → glasses display pipeline
-│   └── features_services.dart   # BMP image display
+│   ├── text_service.dart        # Text → glasses display pipeline
+│   └── features_services.dart    # BMP image display
 ├── controllers/
-│   └── evenai_model_controller.dart  # GetX state for AI history
+│   └── evenai_model_controller.dart   # GetX state for AI history
 ├── models/
-│   └── evenai_model.dart   # AI history data model
+│   └── evenai_model.dart        # AI history data model
 ├── utils/
-│   ├── utils.dart          # Byte helpers, hex conversion
-│   └── string_extension.dart
+│   └── utils.dart               # Byte helpers, hex conversion
 └── views/
-    ├── home_page.dart              # BLE scan + AI home
-    ├── even_list_page.dart         # AI history list
-    ├── features_page.dart          # Feature selection
+    ├── home_page.dart          # BLE scan + AI home
+    ├── even_list_page.dart     # AI history list
+    ├── features_page.dart      # Feature selection
     └── features/
-        ├── bmp_page.dart           # BMP image testing
-        ├── text_page.dart          # Text-to-glasses
+        ├── bmp_page.dart      # BMP image testing
+        ├── text_page.dart     # Text-to-glasses
         └── notification/
             ├── notification_page.dart
             └── notify_model.dart
