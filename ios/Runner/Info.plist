@@ -15,7 +15,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>aura_app</string>
+	<string>Aura</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -27,13 +27,24 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>This app needs Bluetooth access to connect to your smart glasses.</string>
+	<string>Aura needs Bluetooth to connect to your G2 smart glasses for real-time display and audio streaming.</string>
+	<key>NSBluetoothPeripheralUsageDescription</key>
+	<string>Aura uses Bluetooth to communicate with G2 smart glasses.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Aura uses your location to auto-detect your context mode (work, personal, or business).</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Aura needs microphone access for voice commands and audio streaming from your G2 glasses.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Permission to pick image from photo library</string>
+	<string>Aura may access your photo library to send images to your G2 glasses display.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>The speech inquiry feature requires converting voice content to text and then returning the result to the device.</string>
+	<string>Aura uses speech recognition to convert your voice to text for AI responses displayed on your glasses.</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>bluetooth-central</string>
+		<string>audio</string>
+	</array>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>
