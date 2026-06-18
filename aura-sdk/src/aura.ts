@@ -48,17 +48,21 @@ export class Aura {
 
   constructor(config: Partial<AuraConfig> = {}) {
     this.config = { ...DEFAULTS, ...config };
+    // Derive HTTP render URL from WebSocket URL.
+    // wss:// → https://, ws:// → http://, then swap /ws/aura → /render
     const renderUrl = this.config.hermesUrl
-      .replace(/^wss/, 'https')
+      .replace(/^wss:/, 'https:')
+      .replace(/^ws:/, 'http:')
       .replace(/\/ws\/aura$/, '/render');
     this.arabic = new ArabicRenderer(this.config.lang, renderUrl);
     this.gestures = new GestureEngine();
-    this.hermes = new HermesBridge(this.config.hermesUrl);
+    this.hermes = new HermesBridge(this.config.hermesUrl, this.config.token);
     this.modes = new ModeDetector();
   }
 
   /** Initialize: connect to Even bridge + Hermes */
   async init(): Promise<void> {
+    if (this.disposed) throw new Error('Aura has been disposed');
     this.bridge = await waitForEvenAppBridge();
 
     // Create startup page container (required before any display operations)
@@ -109,6 +113,7 @@ export class Aura {
     if (this.config.gestures) {
       await this.bridge.imuControl(true, 500);
       this.bridge.onEvenHubEvent((event) => {
+        if (this.disposed) return;
         const imu = event.sysEvent?.imuData;
         if (imu) {
           const x = imu.x ?? 0;
@@ -128,8 +133,35 @@ export class Aura {
     this.ready = true;
   }
 
+  /** Dispose all persistent resources — call before re-init or teardown.
+   *  Stops mode-detection timer, disconnects WebSocket, stops IMU,
+   *  nulls all callbacks, and releases the Even bridge. Safe to call
+   *  multiple times; idempotent after the first call. */
+  dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+
+    this.modes.stop();
+    this.hermes.disconnect();
+
+    // Stop IMU streaming if active
+    if (this.bridge) {
+      this.bridge.imuControl(false).catch(() => {});
+    }
+
+    // Null callbacks so stale event listeners are no-ops
+    this.onNodCb = null;
+    this.onShakeCb = null;
+    this.onModeChangeCb = null;
+    this.onMessageCb = null;
+
+    this.ready = false;
+    this.bridge = null;
+  }
+
   /** Show text on glasses — auto-detects language, renders Arabic as image if needed */
   async show(text: string, lang?: Language): Promise<void> {
+    if (this.disposed) throw new Error('Aura has been disposed');
     if (!this.bridge) throw new Error('Aura not initialized');
 
     const language = lang || this.config.lang;
@@ -156,6 +188,7 @@ export class Aura {
 
   /** Ask Hermes — voice question, response on display */
   async ask(question: string, lang?: Language): Promise<void> {
+    if (this.disposed) throw new Error('Aura has been disposed');
     const msg: HermesMessage = {
       type: 'query',
       payload: question,
@@ -166,6 +199,7 @@ export class Aura {
 
   /** Send an alert card to display */
   async alert(title: string, body: string, lang?: Language): Promise<void> {
+    if (this.disposed) throw new Error('Aura has been disposed');
     const msg: HermesMessage = {
       type: 'alert',
       payload: `${title}\n${body}`,
@@ -184,6 +218,6 @@ export class Aura {
   // --- Properties ---
 
   get currentMode(): AuraMode { return this.modes.current; }
-  get isReady(): boolean { return this.ready; }
+  get isReady(): boolean { return this.ready && !this.disposed; }
   get bridgeInstance(): EvenAppBridge | null { return this.bridge; }
 }

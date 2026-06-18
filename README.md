@@ -78,8 +78,13 @@ Response:
 
 #### WebSocket /ws/aura
 
-Auth: provide `?token=<AURA_AUTH_TOKEN>` if AURA_AUTH_TOKEN is configured.
-When no token is set, only localhost connections are allowed.
+Auth (when `AURA_AUTH_TOKEN` is set, choose one):
+- `Authorization: Bearer *** HTTP header (preferred)
+- `X-Aura-Token: <token>` custom header
+- `Sec-WebSocket-Protocol: aura-token.<token>` subprotocol (SDK default)
+
+When `AURA_AUTH_TOKEN` is not set, only localhost connections are allowed.
+Query-string tokens (`?token=`) are NOT supported — they leak through proxy logs.
 
 Message format:
 ```json
