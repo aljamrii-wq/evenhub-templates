@@ -36,6 +36,7 @@ export class Aura {
   private modes: ModeDetector;
   private config: AuraConfig;
   private ready = false;
+  private disposed = false;
 
   // Container tracking
   private containerId: number | null = null;
@@ -137,9 +138,6 @@ export class Aura {
    *  Stops mode-detection timer, disconnects WebSocket, stops IMU,
    *  nulls all callbacks, and releases the Even bridge. Safe to call
    *  multiple times; idempotent after the first call. */
-  dispose(): void {
-    if (this.disposed) return;
-    this.disposed = true;
 
     this.modes.stop();
     this.hermes.disconnect();
