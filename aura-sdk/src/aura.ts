@@ -18,12 +18,12 @@ import { GestureEngine } from './gestures';
 import { HermesBridge } from './hermes';
 import { ModeDetector } from './modes';
 
-import type { AuraConfig, AuraMode, Language, HermesMessage, GestureEvent, ModeContext } from './types';
+import type { AuraConfig, AuraMode, Language, HermesMessage, HermesResponse, GestureEvent, ModeContext } from './types';
 
 const DEFAULTS: AuraConfig = {
   lang: 'ar',
   mode: 'auto',
-  hermesUrl: 'wss://hermes.aljamrigroup.com/aura',
+  hermesUrl: 'wss://hermes.aljamrigroup.com/ws/aura',
   gestures: true,
   alwaysListen: false,
 };
@@ -44,11 +44,13 @@ export class Aura {
   private onNodCb: (() => void) | null = null;
   private onShakeCb: (() => void) | null = null;
   private onModeChangeCb: ((mode: ModeContext) => void) | null = null;
-  private onMessageCb: ((msg: HermesMessage) => void) | null = null;
+  private onMessageCb: ((msg: HermesResponse) => void) | null = null;
 
   constructor(config: Partial<AuraConfig> = {}) {
     this.config = { ...DEFAULTS, ...config };
-    const renderUrl = this.config.hermesUrl.replace(/^wss/, 'https') + '/render';
+    const renderUrl = this.config.hermesUrl
+      .replace(/^wss/, 'https')
+      .replace(/\/ws\/aura$/, '/render');
     this.arabic = new ArabicRenderer(this.config.lang, renderUrl);
     this.gestures = new GestureEngine();
     this.hermes = new HermesBridge(this.config.hermesUrl);
@@ -156,8 +158,7 @@ export class Aura {
   async ask(question: string, lang?: Language): Promise<void> {
     const msg: HermesMessage = {
       type: 'query',
-      text: question,
-      lang: lang || this.config.lang,
+      payload: question,
       mode: this.modes.current,
     };
     this.hermes.send(msg);
@@ -167,9 +168,7 @@ export class Aura {
   async alert(title: string, body: string, lang?: Language): Promise<void> {
     const msg: HermesMessage = {
       type: 'alert',
-      text: `${title}
-${body}`,
-      lang: lang || this.config.lang,
+      payload: `${title}\n${body}`,
       mode: this.modes.current,
     };
     this.hermes.send(msg);
@@ -180,7 +179,7 @@ ${body}`,
   onNod(cb: () => void): void { this.onNodCb = cb; }
   onShake(cb: () => void): void { this.onShakeCb = cb; }
   onModeChange(cb: (mode: ModeContext) => void): void { this.onModeChangeCb = cb; }
-  onMessage(cb: (msg: HermesMessage) => void): void { this.onMessageCb = cb; }
+  onMessage(cb: (msg: HermesResponse) => void): void { this.onMessageCb = cb; }
 
   // --- Properties ---
 

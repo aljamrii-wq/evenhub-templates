@@ -11,7 +11,7 @@ export interface AuraConfig {
   lang: Language;
   /** Auto-detect mode or force one */
   mode: AuraMode;
-  /** Hermes API endpoint */
+  /** Hermes WebSocket endpoint (e.g. wss://hermes.aljamrigroup.com/ws/aura) */
   hermesUrl: string;
   /** Enable head gesture detection */
   gestures: boolean;
@@ -19,12 +19,19 @@ export interface AuraConfig {
   alwaysListen: boolean;
 }
 
+/** Message sent from SDK to aura-engine via WebSocket.
+ *  Matches engine's AuraMessage model: { type, payload, mode }. */
 export interface HermesMessage {
-  type: 'query' | 'alert' | 'card' | 'translate';
-  text: string;
-  lang: Language;
+  type: 'query' | 'alert' | 'mode_switch';
+  payload: string;
   mode?: AuraMode;
-  data?: Record<string, unknown>;
+}
+
+/** Response from aura-engine via WebSocket.
+ *  Matches engine's AuraResponse model: { type: 'text'|'bitmap'|'error', payload }. */
+export interface HermesResponse {
+  type: 'text' | 'bitmap' | 'error';
+  payload: string;
 }
 
 export interface RenderResult {

@@ -190,14 +190,22 @@ async def detect_mode(req: ModeRequest):
 def _validate_ws_origin(websocket: WebSocket) -> None:
     """Validate the WebSocket connection is authorized.
 
-    Requires AURA_AUTH_TOKEN to be configured. Auth is via:
+    When AURA_AUTH_TOKEN is configured, auth is via (in order):
     1. Authorization: Bearer *** header (preferred)
-    2. X-Aura-Token: <token> custom header (fallback for WS clients)
+    2. X-Aura-Token: <token> custom header
+    3. Sec-WebSocket-Protocol subprotocol aura-token.xxx (for browser-style clients)
 
-    Fail-closed: if AURA_AUTH_TOKEN is not set, all connections are rejected.
+    When AURA_AUTH_TOKEN is NOT set, only localhost connections are allowed
+    (matches documented behavior for local development).
+
     Token in URL query params is NOT supported (leaks through proxy logs).
     """
     if not AURA_AUTH_TOKEN:
+        # Allow localhost connections when no token configured
+        host = getattr(getattr(websocket, 'client', None), 'host', '')
+        if host in ('127.0.0.1', 'localhost', '::1'):
+            logger.debug("Allowing localhost WebSocket connection (no AURA_AUTH_TOKEN)")
+            return
         raise HTTPException(
             status_code=503,
             detail="AURA_AUTH_TOKEN not configured — server requires authentication",
@@ -211,6 +219,13 @@ def _validate_ws_origin(websocket: WebSocket) -> None:
     # 2. Fall back to custom X-Aura-Token header
     if not token:
         token = websocket.headers.get("x-aura-token", "")
+    # 3. Try WebSocket subprotocol auth (aura-token.xxx)
+    if not token:
+        subprotocols = websocket.scope.get("subprotocols", [])
+        for sp in subprotocols:
+            if sp.startswith("aura-token."):
+                token = sp[len("aura-token."):]
+                break
 
     if not secrets.compare_digest(token, AURA_AUTH_TOKEN):
         raise HTTPException(status_code=403, detail="Invalid or missing auth token")
@@ -220,9 +235,11 @@ def _validate_ws_origin(websocket: WebSocket) -> None:
 async def aura_websocket(websocket: WebSocket):
     """WebSocket endpoint for Aura SDK clients.
 
-    Auth: provide Authorization: Bearer <AURA_AUTH_TOKEN> header
-          or X-Aura-Token: <AURA_AUTH_TOKEN> custom header.
-          Fail-closed: connections rejected if AURA_AUTH_TOKEN is not configured.
+    Auth (when AURA_AUTH_TOKEN configured):
+      - Authorization: Bearer *** header (preferred)
+      - X-Aura-Token: <token> custom header
+      - Sec-WebSocket-Protocol: aura-token.<token> subprotocol (SDK clients)
+    When AURA_AUTH_TOKEN is not set, only localhost connections allowed.
 
     Accepts JSON AuraMessage frames and returns AuraResponse frames.
     Message format:

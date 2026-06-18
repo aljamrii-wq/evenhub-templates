@@ -3,14 +3,17 @@
  * 
  * Sends queries/alerts from glasses, receives responses for display.
  * Supports auto-reconnect with exponential backoff.
+ * Auth: passes token via WebSocket subprotocol (aura-token.xxx) for
+ *       browser-style runtimes that cannot set custom headers.
  */
 
-import type { HermesMessage } from './types';
+import type { HermesMessage, HermesResponse } from './types';
 
-type MessageHandler = (msg: HermesMessage) => void;
+type MessageHandler = (msg: HermesResponse) => void;
 
 export class HermesBridge {
   private url: string;
+  private token: string | undefined;
   private ws: WebSocket | null = null;
   private handlers: MessageHandler[] = [];
   private reconnectDelay = 1000;
@@ -18,15 +21,17 @@ export class HermesBridge {
   private shouldReconnect = true;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
-  constructor(url: string) {
+  constructor(url: string, token?: string) {
     this.url = url;
+    this.token = token;
   }
 
   /** Connect to Hermes WebSocket */
   async connect(): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
-        this.ws = new WebSocket(this.url);
+        const protocols = this.token ? [`aura-token.${this.token}`] : undefined;
+        this.ws = new WebSocket(this.url, protocols);
 
         this.ws.onopen = () => {
           this.reconnectDelay = 1000;
@@ -35,7 +40,7 @@ export class HermesBridge {
 
         this.ws.onmessage = (event) => {
           try {
-            const msg: HermesMessage = JSON.parse(event.data);
+            const msg: HermesResponse = JSON.parse(event.data);
             for (const handler of this.handlers) {
               handler(msg);
             }

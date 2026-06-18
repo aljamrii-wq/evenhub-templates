@@ -1,8 +1,9 @@
 import { HermesBridge } from './hermes';
-import type { HermesMessage } from './types';
+import type { HermesMessage, HermesResponse } from './types';
 
 class MockWebSocket {
   url: string;
+  protocols: string[] | undefined;
   readyState: number = 0;
   onopen: (() => void) | null = null;
   onclose: (() => void) | null = null;
@@ -10,8 +11,9 @@ class MockWebSocket {
   onmessage: ((event: { data: string }) => void) | null = null;
   sent: string[] = [];
 
-  constructor(url: string) {
+  constructor(url: string, protocols?: string[]) {
     this.url = url;
+    this.protocols = protocols;
   }
 
   send(data: string): void { this.sent.push(data); }
@@ -24,13 +26,17 @@ describe('HermesBridge', () => {
   const originalWebSocket = global.WebSocket;
 
   beforeEach(() => {
-    mockWs = new MockWebSocket('wss://test.example.com/ws');
-    (global as any).WebSocket = jest.fn(() => mockWs);
+    mockWs = new MockWebSocket('wss://test.example.com/ws/aura');
+    (global as any).WebSocket = jest.fn((url: string, protocols?: string[]) => {
+      mockWs.url = url;
+      mockWs.protocols = protocols;
+      return mockWs;
+    });
     (global as any).WebSocket.CONNECTING = 0;
     (global as any).WebSocket.OPEN = 1;
     (global as any).WebSocket.CLOSING = 2;
     (global as any).WebSocket.CLOSED = 3;
-    bridge = new HermesBridge('wss://test.example.com/ws');
+    bridge = new HermesBridge('wss://test.example.com/ws/aura');
   });
 
   afterEach(() => {
@@ -40,7 +46,12 @@ describe('HermesBridge', () => {
 
   describe('constructor', () => {
     it('stores the URL', () => {
-      const b = new HermesBridge('wss://custom.url/ws');
+      const b = new HermesBridge('wss://custom.url/ws/aura');
+      expect(b).toBeDefined();
+    });
+
+    it('accepts optional token for subprotocol auth', () => {
+      const b = new HermesBridge('wss://custom.url/ws/aura', 'secret123');
       expect(b).toBeDefined();
     });
   });
@@ -51,6 +62,15 @@ describe('HermesBridge', () => {
       mockWs.readyState = 1;
       mockWs.onopen?.();
       await expect(connectPromise).resolves.toBeUndefined();
+    });
+
+    it('passes token as subprotocol when provided', async () => {
+      const b = new HermesBridge('wss://auth.url/ws/aura', 'secret123');
+      const connectPromise = b.connect();
+      mockWs.readyState = 1;
+      mockWs.onopen?.();
+      await connectPromise;
+      expect(mockWs.protocols).toEqual(['aura-token.secret123']);
     });
 
     it('rejects on WebSocket error', async () => {
@@ -69,23 +89,24 @@ describe('HermesBridge', () => {
   });
 
   describe('send', () => {
-    it('sends JSON when WebSocket is open', async () => {
+    it('sends JSON with payload when WebSocket is open', async () => {
       const connectPromise = bridge.connect();
       mockWs.readyState = 1;
       mockWs.onopen?.();
       await connectPromise;
 
-      const msg: HermesMessage = { type: 'query', text: 'test', lang: 'ar' };
+      const msg: HermesMessage = { type: 'query', payload: 'test', mode: 'personal' };
       bridge.send(msg);
 
       expect(mockWs.sent.length).toBe(1);
       const parsed = JSON.parse(mockWs.sent[0]);
       expect(parsed.type).toBe('query');
-      expect(parsed.text).toBe('test');
+      expect(parsed.payload).toBe('test');
+      expect(parsed.mode).toBe('personal');
     });
 
     it('does not send when WebSocket is not open', () => {
-      bridge.send({ type: 'alert', text: 'x', lang: 'en' });
+      bridge.send({ type: 'alert', payload: 'x' });
       expect(mockWs.sent.length).toBe(0);
     });
   });
@@ -100,7 +121,7 @@ describe('HermesBridge', () => {
       const handler = jest.fn();
       bridge.onMessage(handler);
 
-      const msg: HermesMessage = { type: 'card', text: 'Hello', lang: 'en' };
+      const msg: HermesResponse = { type: 'text', payload: 'Hello' };
       mockWs.onmessage?.({ data: JSON.stringify(msg) });
 
       expect(handler).toHaveBeenCalledTimes(1);
@@ -118,7 +139,7 @@ describe('HermesBridge', () => {
       bridge.onMessage(h1);
       bridge.onMessage(h2);
 
-      mockWs.onmessage?.({ data: JSON.stringify({ type: 'query', text: 'Hi', lang: 'en' }) });
+      mockWs.onmessage?.({ data: JSON.stringify({ type: 'text', payload: 'Hi' }) });
       expect(h1).toHaveBeenCalledTimes(1);
       expect(h2).toHaveBeenCalledTimes(1);
     });
