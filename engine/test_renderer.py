@@ -137,6 +137,9 @@ class TestArabicBitmapRenderer:
 
     def test_arabic_shaping_exception_falls_back_to_raw_text(self):
         """When arabic_reshaper raises, fall back to rendering raw text."""
+        from renderer import HAS_ARABIC
+        if not HAS_ARABIC:
+            pytest.skip("arabic_reshaper not available")
         with patch("renderer.arabic_reshaper.reshape", side_effect=RuntimeError("reshaping failed")):
             r = ArabicBitmapRenderer(width=576, height=288)
             result = r.render("مرحبا")
