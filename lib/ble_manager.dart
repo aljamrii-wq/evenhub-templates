@@ -159,6 +159,26 @@ class BleManager {
     _reconnectAttempts = 0;
   }
 
+  /// Suspend the heartbeat timer (e.g., when app is backgrounded).
+  void suspendHeartbeat() {
+    beatHeartTimer?.cancel();
+    beatHeartTimer = null;
+  }
+
+  /// Resume the heartbeat timer if currently connected.
+  void resumeHeartbeat() {
+    if (isConnected) {
+      startSendBeatHeart();
+    }
+  }
+
+  /// Full cleanup of BLE resources on app termination.
+  void dispose() {
+    suspendHeartbeat();
+    cancelReconnect();
+    _reconnectAttempts = _maxReconnectAttempts; // prevent further reconnect
+  }
+
   void _onPairedGlassesFound(Map<String, String> deviceInfo) {
     final String channelNumber = deviceInfo['channelNumber']!;
     final isAlreadyPaired = pairedGlasses.any((glasses) => glasses['channelNumber'] == channelNumber);

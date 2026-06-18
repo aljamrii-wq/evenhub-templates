@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:aura_app/services/config_service.dart';
+
 /// Hermes Bridge WebSocket client for real-time Aura Engine communication.
 ///
 /// Connects to the Hermes bridge running on the server (Tailscale IP)
@@ -18,8 +20,8 @@ class HermesBridgeService {
   bool _isConnected = false;
 
   int _reconnectAttempts = 0;
-  static const int _maxReconnectAttempts = 5;
-  static const Duration _reconnectDelay = Duration(seconds: 2);
+  static const int _maxReconnectAttempts = AuraConfig.wsMaxReconnectAttempts;
+  static const Duration _reconnectDelay = AuraConfig.wsReconnectDelay;
   Timer? _reconnectTimer;
 
   final StreamController<String> _textController =
@@ -29,14 +31,14 @@ class HermesBridgeService {
   bool get isConnected => _isConnected;
 
   HermesBridgeService({
-    String wsUrl = 'ws://100.76.131.27:8787',
-  }) : _wsUrl = wsUrl;
+    String? wsUrl,
+  }) : _wsUrl = wsUrl ?? AuraConfig.hermesBridgeWsUrl;
 
   Future<bool> connect() async {
     if (_isConnected) return true;
     try {
       _ws = await WebSocket.connect(_wsUrl)
-          .timeout(const Duration(seconds: 10));
+          .timeout(AuraConfig.wsConnectTimeout);
       _isConnected = true;
       _reconnectAttempts = 0;
       _ws!.listen(
@@ -167,7 +169,7 @@ class AuraEngineService {
   late final String _baseUrl;
 
   AuraEngineService({String? baseUrl}) {
-    _baseUrl = baseUrl ?? 'http://100.76.131.27:8000';
+    _baseUrl = baseUrl ?? AuraConfig.auraEngineHttpBase;
   }
 
   Future<String> sendChatRequest(String question,

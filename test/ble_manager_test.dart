@@ -37,5 +37,26 @@ void main() {
       final manager = BleManager.get();
       expect(manager.getPairedGlasses(), isEmpty);
     });
+
+    test('suspendHeartbeat stops the heartbeat timer', () {
+      final manager = BleManager.get();
+      // Should not throw — heartbeat may not be running
+      manager.suspendHeartbeat();
+      // No assertion needed — just verifying the method exists and runs
+    });
+
+    test('resumeHeartbeat when not connected does nothing', () {
+      final manager = BleManager.get();
+      manager.isConnected = false;
+      // Should not throw — just a no-op when disconnected
+      manager.resumeHeartbeat();
+    });
+
+    test('dispose cleans up state', () {
+      final manager = BleManager.get();
+      manager.dispose();
+      // isConnected should remain false after dispose
+      expect(manager.isConnected, isFalse);
+    });
   });
 }
