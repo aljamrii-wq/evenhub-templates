@@ -34,7 +34,7 @@ export class ArabicRenderer {
       body: JSON.stringify({
         text,
         lang: effectiveLang,
-        size: size || 24,
+        font_size: size || 24,
         width: 576,
         height: 288,
       }),
