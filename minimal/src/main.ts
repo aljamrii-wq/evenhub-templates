@@ -4,6 +4,7 @@ import {
   CreateStartUpPageContainer,
   OsEventTypeList,
 } from '@evenrealities/even_hub_sdk'
+import { waitForEvenAppBridge } from './bridge'
 
 const bridge = await waitForEvenAppBridge()
 

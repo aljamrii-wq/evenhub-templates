@@ -1,5 +1,8 @@
 """Tests for engine/renderer.py — Arabic Bitmap Renderer."""
 
+import tempfile
+from unittest.mock import patch, MagicMock
+
 import pytest
 from renderer import ArabicBitmapRenderer, RenderError
 
@@ -92,6 +95,73 @@ class TestArabicBitmapRenderer:
     def test_default_font_fallback(self, renderer):
         result = renderer.render("Test fallback")
         assert isinstance(result, bytes)
+
+    def test_invalid_font_path_falls_back(self):
+        """A non-font file passed as font_path triggers OSError -> font fallback."""
+        with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as tf:
+            tf.write(b"not a font file")
+            bad_path = tf.name
+
+        try:
+            r = ArabicBitmapRenderer(width=576, height=288, font_path=bad_path)
+            # Should not raise; falls back to one of the default fonts
+            result = r.render("Hello")
+            assert isinstance(result, bytes)
+            expected_len = (576 * 288) // 2
+            assert len(result) == expected_len
+        finally:
+            import os
+            os.unlink(bad_path)
+
+    def test_all_font_paths_fail_falls_back_to_pil_default(self):
+        """When DejaVu and Noto paths both fail, PIL ImageFont.load_default() is used."""
+        import PIL.ImageFont
+        _real_truetype = PIL.ImageFont.truetype
+
+        def fail_specific_paths(path=None, *args, **kwargs):
+            if path in ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+                         "/usr/share/fonts/truetype/noto/NotoNaskhArabic-Regular.ttf"):
+                raise OSError("font not found")
+            return _real_truetype(path, *args, **kwargs)
+
+        # Patch the underlying PIL.ImageFont.truetype (not renderer.ImageFont)
+        # so the test controls what happens for all callers including load_default()
+        with patch("PIL.ImageFont.truetype", side_effect=fail_specific_paths):
+            r = ArabicBitmapRenderer(width=576, height=288)
+            result = r.render("Test")
+            assert isinstance(result, bytes)
+            expected_len = (576 * 288) // 2
+            assert len(result) == expected_len
+
+    # --- RTL shaping edge cases ---
+
+    def test_arabic_shaping_exception_falls_back_to_raw_text(self):
+        """When arabic_reshaper raises, fall back to rendering raw text."""
+        with patch("renderer.arabic_reshaper.reshape", side_effect=RuntimeError("reshaping failed")):
+            r = ArabicBitmapRenderer(width=576, height=288)
+            result = r.render("مرحبا")
+            assert isinstance(result, bytes)
+            expected_len = (576 * 288) // 2
+            assert len(result) == expected_len
+
+    # --- RenderError wrapping ---
+
+    def test_render_raises_render_error_on_pil_failure(self):
+        """When PIL rendering fails, the exception is wrapped in RenderError."""
+        with patch("renderer.Image.new", side_effect=RuntimeError("PIL crash")):
+            r = ArabicBitmapRenderer(width=576, height=288)
+            with pytest.raises(RenderError, match="Bitmap rendering failed"):
+                r.render("Hello")
+
+    def test_render_error_chains_original_exception(self):
+        """RenderError wraps the original exception via __cause__."""
+        original = RuntimeError("PIL crash")
+        with patch("renderer.Image.new", side_effect=original):
+            r = ArabicBitmapRenderer(width=576, height=288)
+            try:
+                r.render("Hello")
+            except RenderError as exc:
+                assert exc.__cause__ is original
 
     # --- 4-bit grayscale ---
 

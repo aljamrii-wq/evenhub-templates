@@ -5,6 +5,7 @@ import {
   TextContainerUpgrade,
   OsEventTypeList,
 } from '@evenrealities/even_hub_sdk'
+import { waitForEvenAppBridge } from './bridge'
 import { startSttStream } from './asr/stt'
 import { mountUi, setStatus, setTranscript } from './ui'
 

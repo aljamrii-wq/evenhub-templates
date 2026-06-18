@@ -189,4 +189,79 @@ describe('HermesBridge', () => {
       jest.useRealTimers();
     });
   });
-});
+
+  it('rejects handshake when WebSocket closes mid-handshake', async () => {
+    const connectPromise = bridge.connect();
+
+    mockWs.readyState = 1;
+    mockWs.onopen?.();
+
+    // Simulate close before hello_ack arrives
+    mockWs.onclose?.();
+
+    await expect(connectPromise).rejects.toThrow('WebSocket closed during handshake');
+  });
+
+  it('attempts reconnect on close with exponential backoff', async () => {
+    jest.useFakeTimers();
+
+    // Override WebSocket constructor for this test
+    const wsInstances: any[] = [];
+    (global as any).WebSocket = jest.fn(() => {
+      const ws = {
+        readyState: 0,
+        sent: [] as string[],
+        onopen: null as any,
+        onmessage: null as any,
+        onclose: null as any,
+        onerror: null as any,
+        send(data: string) { this.sent.push(data); },
+        close() {},
+      };
+      wsInstances.push(ws);
+      return ws;
+    });
+
+    const b = new HermesBridge('wss://test.example.com/ws');
+    const connectPromise = b.connect();
+
+    // First WS opens and sends HELLO
+    wsInstances[0].readyState = 1;
+    wsInstances[0].onopen?.();
+    expect(wsInstances[0].sent.length).toBe(1);
+
+    // Wait for current timers
+    await jest.runAllTimersAsync();
+
+    // Complete handshake
+    wsInstances[0].onmessage?.({ data: JSON.stringify({
+      type: 'hello_ack', version: 1, server: 'aura-engine', capabilities: {},
+    }) });
+    await connectPromise;
+    expect(b.isReady).toBe(true);
+
+    // Now close — should trigger reconnect after delay
+    wsInstances[0].onclose?.();
+    expect(b.isReady).toBe(false);
+
+    // Advance time past reconnect delay (1000ms)
+    jest.advanceTimersByTime(1100);
+
+    // Second WS should have been created
+    expect(wsInstances.length).toBe(2);
+    wsInstances[1].readyState = 1;
+    wsInstances[1].onopen?.();
+    expect(wsInstances[1].sent.length).toBe(1);
+
+    b.disconnect();
+    jest.useRealTimers();
+  });
+
+  it('rejects connect when onerror fires before open', async () => {
+    const connectPromise = bridge.connect();
+
+    // Simulate error
+    mockWs.onerror?.();
+
+    await expect(connectPromise).rejects.toThrow('WebSocket connection failed');
+  });});

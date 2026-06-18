@@ -5,6 +5,7 @@ import {
   TextContainerUpgrade,
   OsEventTypeList,
 } from '@evenrealities/even_hub_sdk'
+import { waitForEvenAppBridge } from './bridge'
 import { paginate } from './paginate'
 import { SAMPLE_TEXT } from './sample'
 
