@@ -20,7 +20,7 @@ cd engine
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-pytest -v                          # 131 tests pass
+pytest -v                          # 166 tests pass
 python main.py                     # http://127.0.0.1:8000
 ```
 
@@ -104,7 +104,7 @@ detection, Hermes bridge client, and mode auto-switching.
 ```bash
 cd aura-sdk
 npm install
-npm test                         # 51 tests pass
+npm test                         # 107 tests pass
 npm run build                    # typecheck + ESM fix
 ```
 
