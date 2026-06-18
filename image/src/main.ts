@@ -1,5 +1,4 @@
 import {
-  waitForEvenAppBridge,
   TextContainerProperty,
   ImageContainerProperty,
   ImageRawDataUpdate,
@@ -7,6 +6,7 @@ import {
   TextContainerUpgrade,
   OsEventTypeList,
 } from '@evenrealities/even_hub_sdk'
+import { waitForEvenAppBridge } from './bridge'
 import { loadImageBytes } from './image/renderer'
 
 const SAMPLE_URL = `${import.meta.env.BASE_URL}sample.png`
