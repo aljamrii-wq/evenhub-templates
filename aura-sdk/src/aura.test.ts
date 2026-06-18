@@ -293,12 +293,15 @@ describe('Aura', () => {
   // --- GATT readiness guard ---
 
   it('throws when GATT services never become ready', async () => {
+    // Use a short GATT timeout so the test completes before Jest's 5s default
+    const gattAura = new Aura({ gattTimeoutMs: 200 });
     const bridge = mockBridge();
     setupBridge(bridge, { deviceInfo: null });  // null = GATT never ready
     (waitForEvenAppBridge as any).mockResolvedValue(bridge);
 
-    await expect(aura.init()).rejects.toThrow(/GATT service discovery timeout/);
-    expect(aura.isReady).toBe(false);
+    await expect(gattAura.init()).rejects.toThrow(/GATT service discovery timeout/);
+    expect(gattAura.isReady).toBe(false);
+    gattAura.dispose();
   });
 
   it('skips GATT guard when gattTimeoutMs is 0', async () => {
