@@ -138,6 +138,9 @@ export class Aura {
    *  Stops mode-detection timer, disconnects WebSocket, stops IMU,
    *  nulls all callbacks, and releases the Even bridge. Safe to call
    *  multiple times; idempotent after the first call. */
+  dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
 
     this.modes.stop();
     this.hermes.disconnect();
