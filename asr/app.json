@@ -1,7 +1,7 @@
 {
-  "package_id": "com.example.evenhubasr",
+  "package_id": "com.aljamri.aura.asr",
   "edition": "202601",
-  "name": "Even Hub ASR",
+  "name": "Aura ASR",
   "version": "0.1.0",
   "min_app_version": "2.0.0",
   "min_sdk_version": "0.0.10",
@@ -9,5 +9,5 @@
   "permissions": [
     { "name": "g2-microphone", "desc": "Capture audio from the glasses mic for live transcription." }
   ],
-  "supported_languages": ["en"]
+  "supported_languages": ["en", "ar"]
 }
