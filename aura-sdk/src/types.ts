@@ -13,7 +13,7 @@ export interface AuraConfig {
   mode: AuraMode;
   /** Hermes WebSocket endpoint (e.g. wss://hermes.aljamrigroup.com/ws/aura) */
   hermesUrl: string;
-  /** Auth token for Hermes WebSocket (passed via subprotocol aura-token.xxx) */
+  /** Auth token for engine WebSocket (passed via subprotocol aura-token.xxx) */
   token?: string;
   /** Enable head gesture detection */
   gestures: boolean;
