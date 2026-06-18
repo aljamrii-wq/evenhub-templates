@@ -66,16 +66,31 @@ describe('ModeDetector', () => {
     expect(detector.current).toBe('personal');
   });
 
+  it('does not fire callbacks when mode stays the same', () => {
+    const callback = jest.fn();
+    detector.onChange(callback);
+
+    // Start with personal (night) — default is already personal, no change
+    const night = makeDate(23, 0);
+    detector.start({}, night);
+    expect(detector.current).toBe('personal');
+    expect(callback).not.toHaveBeenCalled();
+  });
+
   it('notifies callbacks on mode change', () => {
     const callback = jest.fn();
     detector.onChange(callback);
 
-    // Start with personal (night)
-    const night = makeDate(23, 0);
-    detector.start({}, night);
-    expect(detector.current).toBe('personal');
-    // No callback fired because it started as personal
-    expect(callback).not.toHaveBeenCalled();
+    // Start with flydubai hours (morning) — changes from default 'personal' to 'flydubai'
+    const morning = makeDate(10, 0); // Monday, 10am
+    detector.start({}, morning);
+    expect(detector.current).toBe('flydubai');
+    expect(callback).toHaveBeenCalledTimes(1);
+    expect(callback).toHaveBeenCalledWith({
+      mode: 'flydubai',
+      confidence: 0.85,
+      reason: 'work hours — Flydubai shift',
+    });
   });
 
   it('forceMode overrides detection', () => {

@@ -93,5 +93,33 @@ describe('ArabicRenderer', () => {
 
       await expect(renderer.render('مرحبا')).rejects.toThrow('Render failed: 500');
     });
+
+    it('evicts oldest cache entry when cache exceeds 100 entries', async () => {
+      // Fill cache with 101 unique entries to trigger eviction
+      for (let i = 0; i < 101; i++) {
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          arrayBuffer: () => Promise.resolve(new Uint8Array([i]).buffer),
+        });
+        await renderer.render(`text-${i}`);
+      }
+
+      // Re-render the 100th item (text-99) — should still be cached
+      mockFetch.mockReset();
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        arrayBuffer: () => Promise.resolve(new Uint8Array([99]).buffer),
+      });
+      await renderer.render('text-99');
+      expect(mockFetch).not.toHaveBeenCalled();
+
+      // Re-render the first item (text-0) — should have been evicted
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        arrayBuffer: () => Promise.resolve(new Uint8Array([0]).buffer),
+      });
+      await renderer.render('text-0');
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
   });
 });
