@@ -98,8 +98,10 @@ describe('HermesBridge', () => {
       const msg: HermesMessage = { type: 'query', payload: 'test', mode: 'personal' };
       bridge.send(msg);
 
-      expect(mockWs.sent.length).toBe(1);
-      const parsed = JSON.parse(mockWs.sent[0]);
+      // sent[0] is the HELLO handshake frame emitted on open; sent[1] is the query.
+      expect(mockWs.sent.length).toBe(2);
+      expect(JSON.parse(mockWs.sent[0]).type).toBe('hello');
+      const parsed = JSON.parse(mockWs.sent[1]);
       expect(parsed.type).toBe('query');
       expect(parsed.payload).toBe('test');
       expect(parsed.mode).toBe('personal');

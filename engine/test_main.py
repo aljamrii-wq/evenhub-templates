@@ -251,3 +251,100 @@ class TestWebSocketAuth:
             assert "Invalid" in exc.value.detail
         finally:
             main.AURA_AUTH_TOKEN = original_token
+
+
+@pytest.fixture
+def authed_client():
+    """A TestClient with WS auth configured, plus a Bearer header helper."""
+    import main
+    original_token = main.AURA_AUTH_TOKEN
+    main.AURA_AUTH_TOKEN = "test-secret"
+    try:
+        yield TestClient(app), {"authorization": "Bearer test-secret"}
+    finally:
+        main.AURA_AUTH_TOKEN = original_token
+
+
+class TestWebSocketLifecycle:
+    """End-to-end WebSocket connection lifecycle over the FastAPI endpoint.
+
+    Covers the handshake, error recovery without dropping the socket, oversized
+    frames, clean disconnect, and reconnect (a fresh connection after close).
+    """
+
+    def test_hello_handshake_returns_ack(self, authed_client):
+        client, headers = authed_client
+        with client.websocket_connect("/ws/aura", headers=headers) as ws:
+            ws.send_json({"type": "hello", "version": 1, "client": "aura-sdk", "capabilities": {}})
+            ack = ws.receive_json()
+            assert ack["type"] == "hello_ack"
+            assert ack["version"] == 1
+            assert ack["server"] == "aura-engine"
+
+    def test_hello_version_mismatch_returns_error(self, authed_client):
+        client, headers = authed_client
+        with client.websocket_connect("/ws/aura", headers=headers) as ws:
+            ws.send_json({"type": "hello", "version": 99, "client": "aura-sdk"})
+            resp = ws.receive_json()
+            assert resp["type"] == "hello_error"
+            assert 1 in resp["supported_versions"]
+
+    def test_invalid_frame_returns_error_and_keeps_socket_open(self, authed_client):
+        client, headers = authed_client
+        with client.websocket_connect("/ws/aura", headers=headers) as ws:
+            ws.send_text("not valid json")
+            err = ws.receive_json()
+            assert err["type"] == "error"
+            # Socket stays open: a subsequent valid HELLO still works.
+            ws.send_json({"type": "hello", "version": 1})
+            ack = ws.receive_json()
+            assert ack["type"] == "hello_ack"
+
+    def test_oversized_frame_rejected(self, authed_client, monkeypatch):
+        import main
+        monkeypatch.setattr(main, "MAX_WS_MESSAGE_BYTES", 16)
+        client, headers = authed_client
+        with client.websocket_connect("/ws/aura", headers=headers) as ws:
+            ws.send_json({"type": "query", "payload": "x" * 100, "mode": "personal"})
+            err = ws.receive_json()
+            assert err["type"] == "error"
+            assert "too large" in err["payload"].lower()
+
+    def test_query_round_trip(self, authed_client, monkeypatch):
+        """A query is routed through the bridge and a TEXT response returns."""
+        import main
+        monkeypatch.setattr(main.bridge, "hermes_command", "echo")
+        client, headers = authed_client
+        with client.websocket_connect("/ws/aura", headers=headers) as ws:
+            ws.send_json({"type": "query", "payload": "ping", "mode": "personal"})
+            resp = ws.receive_json()
+            assert resp["type"] == "text"
+            assert "ping" in resp["payload"]
+
+    def test_clean_disconnect_then_reconnect(self, authed_client):
+        """Closing the socket is handled cleanly and a new connection works."""
+        client, headers = authed_client
+        # First connection — disconnect cleanly via context manager exit.
+        with client.websocket_connect("/ws/aura", headers=headers) as ws:
+            ws.send_json({"type": "hello", "version": 1})
+            assert ws.receive_json()["type"] == "hello_ack"
+        # Reconnect — server accepts a fresh connection without lingering state.
+        with client.websocket_connect("/ws/aura", headers=headers) as ws:
+            ws.send_json({"type": "hello", "version": 1})
+            assert ws.receive_json()["type"] == "hello_ack"
+
+    def test_unauthorized_connection_closed(self):
+        """Without a valid token the connection is refused (closed)."""
+        import main
+        from starlette.websockets import WebSocketDisconnect
+        original = main.AURA_AUTH_TOKEN
+        main.AURA_AUTH_TOKEN = "the-secret"
+        try:
+            client = TestClient(app)
+            with pytest.raises(WebSocketDisconnect):
+                with client.websocket_connect(
+                    "/ws/aura", headers={"authorization": "Bearer wrong"}
+                ) as ws:
+                    ws.receive_json()
+        finally:
+            main.AURA_AUTH_TOKEN = original

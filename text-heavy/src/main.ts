@@ -1,17 +1,17 @@
-import { waitForEvenAppBridge } from './bridge'
 import {
   TextContainerProperty,
   CreateStartUpPageContainer,
   TextContainerUpgrade,
   OsEventTypeList,
 } from '@evenrealities/even_hub_sdk'
+import { DISPLAY_WIDTH } from '@aljamri/aura-sdk'
 import { waitForEvenAppBridge } from './bridge'
 import { paginate } from './paginate'
 import { SAMPLE_TEXT } from './sample'
 
 // Body container geometry. Inner box (width/height minus padding and border)
 // is what pretext measures against, so keep these in sync if you resize.
-const BODY_W = 576
+const BODY_W = DISPLAY_WIDTH
 const BODY_H = 240
 const BODY_PAD = 4
 const BODY_BORDER = 0
@@ -40,7 +40,7 @@ const body = new TextContainerProperty({
 const pager = new TextContainerProperty({
   xPosition: 0,
   yPosition: 250,
-  width: 576,
+  width: DISPLAY_WIDTH,
   height: 30,
   borderWidth: 0,
   borderColor: 5,

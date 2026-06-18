@@ -264,6 +264,12 @@ async def aura_websocket(websocket: WebSocket):
                 await websocket.send_text(err.to_json())
                 continue
 
+            # Protocol handshake: reply to a HELLO frame with hello_ack/hello_error.
+            hello = bridge.try_build_hello_ack(raw)
+            if hello is not None:
+                await websocket.send_text(hello)
+                continue
+
             try:
                 msg = AuraMessage.from_json(raw)
                 response = await bridge.handle_message(msg)

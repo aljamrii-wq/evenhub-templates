@@ -1,4 +1,5 @@
 import type { G2Pixels } from './container-constraints';
+import type { AuraBridgeMode } from './bridge/types';
 
 /** Core types for Aura SDK */
 
@@ -24,6 +25,67 @@ export interface AuraConfig {
   gestures: boolean;
   /** Enable continuous listening */
   alwaysListen: boolean;
+
+  // --- Bridge transport selection (optional) ---
+  /** Which transport to use: 'legacy' (Even Hub SDK, default) or 'custom'. */
+  bridgeMode?: AuraBridgeMode;
+  /** Base HTTP(S) URL for the custom bridge. Falls back to a host derived
+   *  from hermesUrl when omitted. */
+  bridgeUrl?: string;
+  /** Namespace for the custom bridge, to isolate multiple apps on one backend. */
+  bridgeNamespace?: string;
+  /** Poll interval (ms) for the custom bridge compatibility shim. */
+  bridgePollMs?: number;
+}
+
+// --- Engine REST client contracts (aura-engine HTTP API) ---
+
+/** Response from GET /health. */
+export interface EngineHealthResponse {
+  status: string;
+  version: string;
+  uptime: number;
+  modes: string[];
+}
+
+/** Request body for POST /render. */
+export interface EngineRenderRequest {
+  text: string;
+  lang: Language;
+  size?: number;
+  width?: number;
+  height?: number;
+}
+
+/** Response from POST /render. */
+export interface EngineRenderResponse {
+  /** Base64-encoded packed pixel data. */
+  data: string;
+  width: number;
+  height: number;
+  /** Pixel format identifier, e.g. '4bit'. */
+  format: string;
+}
+
+/** Response from POST /mode. */
+export interface EngineModeResponse {
+  mode: string;
+  confidence: number;
+  reason: string;
+}
+
+/** Request body for POST /translate. */
+export interface EngineTranslateRequest {
+  text: string;
+  from: string;
+  to: string;
+}
+
+/** Response from POST /translate. */
+export interface EngineTranslateResponse {
+  text: string;
+  from: string;
+  to: string;
 }
 
 /** Message sent from SDK to aura-engine via WebSocket (after HELLO handshake).

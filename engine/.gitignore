@@ -1,1 +1,4 @@
-.coverage\ncoverage.json
+.coverage
+coverage.json
+__pycache__/
+.venv/

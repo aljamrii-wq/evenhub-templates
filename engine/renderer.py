@@ -7,6 +7,7 @@ consumable directly by the Even G2 display.
 
 import io
 import logging
+import os
 from PIL import Image, ImageDraw, ImageFont
 
 try:
@@ -17,6 +18,21 @@ except ImportError:
     HAS_ARABIC = False
 
 logger = logging.getLogger(__name__)
+
+# Arabic-capable font bundled with the engine. Bundling guarantees correct
+# Arabic glyphs regardless of which fonts the host/CI image happens to have
+# installed — without it, PIL silently falls back to a Latin-only font and
+# every Arabic character renders as a .notdef ("tofu") box.
+_BUNDLED_ARABIC_FONT = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "fonts", "Amiri-Regular.ttf"
+)
+
+# System fonts to try after the bundled font, in order of Arabic coverage.
+_SYSTEM_FONT_CANDIDATES = (
+    "/usr/share/fonts/opentype/fonts-hosny-amiri/Amiri-Regular.ttf",
+    "/usr/share/fonts/truetype/noto/NotoNaskhArabic-Regular.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",  # Latin-only last resort
+)
 
 
 class RenderError(Exception):
@@ -58,26 +74,51 @@ class ArabicBitmapRenderer:
         self._font = self._load_font()
 
     def _load_font(self):
-        """Load the configured font, falling back to PIL default."""
+        """Load an Arabic-capable font, falling back to PIL default.
+
+        Resolution order:
+          1. Explicit ``font_path`` if provided.
+          2. The Amiri font bundled in ``engine/fonts/`` (Arabic-capable).
+          3. Known system fonts (Amiri, Noto Naskh Arabic, then DejaVu).
+          4. PIL's built-in default (Latin-only — last resort).
+        """
+        candidates: list[str] = []
         if self.font_path:
+            candidates.append(self.font_path)
+        candidates.append(_BUNDLED_ARABIC_FONT)
+        candidates.extend(_SYSTEM_FONT_CANDIDATES)
+
+        for path in candidates:
             try:
-                return ImageFont.truetype(self.font_path, self.font_size)
+                font = ImageFont.truetype(path, self.font_size)
+                self.font_supports_arabic = self._font_has_arabic(font)
+                if not self.font_supports_arabic:
+                    logger.warning(
+                        "Loaded font %s has no Arabic glyphs — Arabic text will "
+                        "render as .notdef boxes.", path
+                    )
+                return font
             except OSError as exc:
-                logger.warning(
-                    "Cannot load font %s: %s. Falling back to default.",
-                    self.font_path, exc
-                )
-        try:
-            return ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-                                      self.font_size)
-        except OSError:
-            pass
-        try:
-            return ImageFont.truetype("/usr/share/fonts/truetype/noto/NotoNaskhArabic-Regular.ttf",
-                                      self.font_size)
-        except OSError:
-            pass
+                logger.debug("Cannot load font %s: %s", path, exc)
+
+        logger.warning(
+            "No TrueType font available; using PIL default (no Arabic support)."
+        )
+        self.font_supports_arabic = False
         return ImageFont.load_default()
+
+    @staticmethod
+    def _font_has_arabic(font) -> bool:
+        """Return True if the font renders an Arabic letter to a real glyph.
+
+        Uses Arabic letter heh (U+0647) as a probe: a font without Arabic
+        coverage produces an empty mask (no .notdef ink) for it under PIL.
+        """
+        try:
+            mask = font.getmask("ه")  # ARABIC LETTER HEH
+            return mask.getbbox() is not None
+        except Exception:
+            return False
 
     def _shape_text(self, text: str) -> str:
         """Apply Arabic reshaping and bidirectional reordering."""

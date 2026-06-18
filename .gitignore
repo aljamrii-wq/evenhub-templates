@@ -54,3 +54,12 @@ ios/Flutter/flutter_assets/
 ios/Runner/GeneratedPluginRegistrant.*
 ios/Pods/
 ios/.symlinks/
+
+# Node / TypeScript
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+*.tsbuildinfo
+.env.local
+coverage/

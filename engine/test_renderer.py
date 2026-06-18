@@ -137,7 +137,7 @@ class TestArabicBitmapRenderer:
 
     def test_arabic_shaping_exception_falls_back_to_raw_text(self):
         """When arabic_reshaper raises, fall back to rendering raw text."""
-        with patch("renderer.arabic_reshaper.reshape", side_effect=RuntimeError("reshaping failed")):
+        with patch("arabic_reshaper.reshape", side_effect=RuntimeError("reshaping failed")):
             r = ArabicBitmapRenderer(width=576, height=288)
             result = r.render("مرحبا")
             assert isinstance(result, bytes)
@@ -222,6 +222,73 @@ class TestArabicBitmapRenderer:
         assert isinstance(result, bytes)
         expected_len = (576 * 288) // 2
         assert len(result) == expected_len
+
+
+class TestArabicGlyphRendering:
+    """Verify real Arabic glyph rendering — not just byte-length checks.
+
+    These guard against the failure mode where reshaping/bidi work but the
+    loaded font lacks Arabic coverage, so every letter becomes a .notdef box.
+    """
+
+    @pytest.fixture
+    def renderer(self):
+        return ArabicBitmapRenderer(width=576, height=288)
+
+    def test_bundled_font_supports_arabic(self, renderer):
+        """The default renderer must load an Arabic-capable font."""
+        assert renderer.font_supports_arabic is True
+
+    def test_bundled_font_path_exists(self):
+        """The Amiri font is bundled in-repo so rendering never depends on the host."""
+        import os
+        from renderer import _BUNDLED_ARABIC_FONT
+        assert os.path.isfile(_BUNDLED_ARABIC_FONT)
+
+    def test_arabic_text_produces_ink(self, renderer):
+        """A real Arabic phrase must draw visible pixels."""
+        result = renderer.render("السلام عليكم")
+        assert any(b != 0 for b in result), "Arabic text rendered as blank bitmap"
+
+    def test_arabic_reshaping_connects_letters(self, renderer):
+        """_shape_text must transform raw Arabic into presentation forms.
+
+        Reshaping maps base letters (U+06xx) to their contextual presentation
+        forms (U+FBxx-FExx); the shaped string therefore differs from the input.
+        """
+        raw = "مرحبا"
+        shaped = renderer._shape_text(raw)
+        assert shaped != raw
+        # At least one character should be in the Arabic Presentation Forms range.
+        assert any(0xFB50 <= ord(ch) <= 0xFEFF for ch in shaped)
+
+    def test_different_arabic_words_render_differently(self, renderer):
+        """Distinct Arabic words must not collapse to identical bitmaps.
+
+        If the font lacked glyphs, every word would render as a row of identical
+        .notdef boxes and these would be (nearly) equal.
+        """
+        a = renderer.render("نعم")
+        b = renderer.render("مرحبا بالعالم")
+        assert a != b
+
+    def test_arabic_renders_more_ink_than_blank(self, renderer):
+        """Arabic content must produce strictly more ink than an empty render."""
+        blank_ink = sum(1 for x in renderer.render("") if x != 0)
+        arabic_ink = sum(1 for x in renderer.render("مرحبا بكم في أورا") if x != 0)
+        assert arabic_ink > blank_ink
+
+    def test_font_has_arabic_false_for_glyphless_font(self):
+        """A font that produces no ink for an Arabic letter reports no support."""
+        glyphless = MagicMock()
+        glyphless.getmask.return_value.getbbox.return_value = None
+        assert ArabicBitmapRenderer._font_has_arabic(glyphless) is False
+
+    def test_font_has_arabic_false_when_getmask_raises(self):
+        """Probe failures degrade to 'no Arabic support' rather than crashing."""
+        broken = MagicMock()
+        broken.getmask.side_effect = RuntimeError("freetype error")
+        assert ArabicBitmapRenderer._font_has_arabic(broken) is False
 
 
 class TestRenderError:

@@ -1,4 +1,3 @@
-import { waitForEvenAppBridge } from './bridge'
 import {
   TextContainerProperty,
   ImageContainerProperty,
@@ -7,6 +6,7 @@ import {
   TextContainerUpgrade,
   OsEventTypeList,
 } from '@evenrealities/even_hub_sdk'
+import { DISPLAY_WIDTH, DISPLAY_HEIGHT } from '@aljamri/aura-sdk'
 import { waitForEvenAppBridge } from './bridge'
 import { loadImageBytes } from './image/renderer'
 
@@ -19,8 +19,8 @@ const bridge = await waitForEvenAppBridge()
 const eventLayer = new TextContainerProperty({
   xPosition: 0,
   yPosition: 0,
-  width: 576,
-  height: 288,
+  width: DISPLAY_WIDTH,
+  height: DISPLAY_HEIGHT,
   borderWidth: 0,
   borderColor: 0,
   paddingLength: 0,
@@ -33,7 +33,7 @@ const eventLayer = new TextContainerProperty({
 const statusLine = new TextContainerProperty({
   xPosition: 0,
   yPosition: 220,
-  width: 576,
+  width: DISPLAY_WIDTH,
   height: 40,
   borderWidth: 0,
   borderColor: 5,
@@ -47,7 +47,7 @@ const statusLine = new TextContainerProperty({
 const IMG_W = 200
 const IMG_H = 100
 const image = new ImageContainerProperty({
-  xPosition: (576 - IMG_W) / 2,
+  xPosition: (DISPLAY_WIDTH - IMG_W) / 2,
   yPosition: 40,
   width: IMG_W,
   height: IMG_H,

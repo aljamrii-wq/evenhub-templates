@@ -193,9 +193,15 @@ export class Aura {
       await this.bridge.imuControl(true, 500);
     }
 
-    // Hermes connection
-    await this.hermes.connect();
+    // Hermes connection. The display path must work even when the AI backend
+    // is unreachable, so a failed connect degrades gracefully (HermesBridge
+    // keeps retrying with backoff) instead of failing init().
     this.hermes.onMessage((msg) => this.onMessageCb?.(msg));
+    try {
+      await this.hermes.connect();
+    } catch (err) {
+      console.warn('[aura] Hermes connect failed; continuing offline:', err);
+    }
 
     this.ready = true;
   }

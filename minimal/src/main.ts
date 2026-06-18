@@ -1,54 +1,37 @@
-import { waitForEvenAppBridge } from './bridge'
-import {
-  TextContainerProperty,
-  CreateStartUpPageContainer,
-  OsEventTypeList,
-} from '@evenrealities/even_hub_sdk'
-import { waitForEvenAppBridge } from './bridge'
+import { Aura } from '@aljamri/aura-sdk'
 
-const bridge = await waitForEvenAppBridge()
+// Minimal template: drive the glasses through the Aura SDK rather than the raw
+// Even Hub bridge. The SDK creates the page containers, wires double-tap exit,
+// and handles language-aware rendering (English here; Arabic renders as an
+// image via the engine).
+async function main() {
+  const aura = new Aura({
+    lang: 'en',
+    gestures: false,
+    alwaysListen: false,
+  })
 
-const mainText = new TextContainerProperty({
-  xPosition: 0,
-  yPosition: 0,
-  width: 576,
-  height: 288,
-  borderWidth: 0,
-  borderColor: 5,
-  paddingLength: 4,
-  containerID: 1,
-  containerName: 'main',
-  content: 'Hello from G2!\nDouble-tap to exit.',
-  isEventCapture: 1,
-})
+  aura.onExit(() => {
+    setStatus('Exited — close the app on the glasses.')
+  })
 
-const result = await bridge.createStartUpPageContainer(
-  new CreateStartUpPageContainer({
-    containerTotalNum: 1,
-    textObject: [mainText],
-  }),
-)
+  await aura.init()
+  await aura.show('Hello from G2!\nDouble-tap to exit.', 'en')
+  setStatus('Check the glasses — "Hello from G2!" should be visible.')
+}
 
-console.log('Page created:', result === 0 ? 'success' : `failed (${result})`)
+function setStatus(text: string) {
+  const app = document.querySelector<HTMLDivElement>('#app')
+  if (!app) return
+  app.innerHTML = `
+    <main style="margin:auto;padding:24px;max-width:640px;text-align:center;">
+      <h1 style="font-size:18px;font-weight:600;margin:0 0 8px;">Minimal (Aura SDK)</h1>
+      <p style="color:#919191;font-size:14px;margin:0;">${text}</p>
+    </main>
+  `
+}
 
-// Event routing, critical details:
-//   • Protobuf omits zero-value fields on the wire, so CLICK_EVENT (0)
-//     arrives as `undefined`. Always coalesce with `?? 0` before comparing.
-//   • Taps/double-taps/lifecycle come through `event.sysEvent`.
-//     Scroll gestures come through `event.textEvent`. Never mix them.
-//   • Double-tap → `shutDownPageContainer(1)` is a root-level check: it
-//     must fire no matter which envelope the event arrives in, so users
-//     can always exit the app.
-const unsubscribe = bridge.onEvenHubEvent(event => {
-  const sysType = event.sysEvent?.eventType ?? null
-  const textType = event.textEvent?.eventType ?? null
-
-  if (sysType === OsEventTypeList.DOUBLE_CLICK_EVENT || textType === OsEventTypeList.DOUBLE_CLICK_EVENT) {
-    bridge.shutDownPageContainer(1)
-    return
-  }
-
-  if (sysType === OsEventTypeList.SYSTEM_EXIT_EVENT || sysType === OsEventTypeList.ABNORMAL_EXIT_EVENT) {
-    unsubscribe()
-  }
+main().catch((err) => {
+  console.error('Aura minimal failed to start:', err)
+  setStatus(`Failed to start: ${err instanceof Error ? err.message : String(err)}`)
 })

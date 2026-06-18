@@ -1,10 +1,10 @@
-import { waitForEvenAppBridge } from './bridge'
 import {
   TextContainerProperty,
   CreateStartUpPageContainer,
   TextContainerUpgrade,
   OsEventTypeList,
 } from '@evenrealities/even_hub_sdk'
+import { DISPLAY_WIDTH, DISPLAY_HEIGHT } from '@aljamri/aura-sdk'
 import { waitForEvenAppBridge } from './bridge'
 import { startSttStream } from './asr/stt'
 import { mountUi, setStatus, setTranscript } from './ui'
@@ -22,8 +22,8 @@ const bridge = await waitForEvenAppBridge()
 const transcript = new TextContainerProperty({
   xPosition: 0,
   yPosition: 0,
-  width: 576,
-  height: 288,
+  width: DISPLAY_WIDTH,
+  height: DISPLAY_HEIGHT,
   borderWidth: 0,
   borderColor: 5,
   paddingLength: 4,

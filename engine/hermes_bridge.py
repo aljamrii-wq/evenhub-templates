@@ -18,6 +18,14 @@ from renderer import ArabicBitmapRenderer
 
 logger = logging.getLogger(__name__)
 
+# Wire protocol version negotiated during the HELLO handshake. Must match the
+# SDK's PROTOCOL_VERSION (aura-sdk/src/types.ts). Bump when the frame format
+# changes incompatibly.
+PROTOCOL_VERSION = 1
+
+# Engine capabilities advertised to clients in the hello_ack.
+_SERVER_CAPABILITIES = {"render": True, "modes": True}
+
 
 class MessageType(str, Enum):
     QUERY = "query"
@@ -88,6 +96,41 @@ class AuraWebSocketBridge:
         self.renderer = renderer or ArabicBitmapRenderer()
         self.max_message_bytes = max_message_bytes
         self.context: dict = {}
+
+    @staticmethod
+    def try_build_hello_ack(raw: str) -> str | None:
+        """If ``raw`` is a HELLO handshake frame, return the ack/err JSON to send.
+
+        The SDK sends ``{"type": "hello", "version": N, "client": "...",
+        "capabilities": {...}}`` immediately on connect. The engine replies with
+        ``hello_ack`` on a version match, or ``hello_error`` on mismatch.
+
+        Returns None when ``raw`` is not a HELLO frame, so the caller falls
+        through to normal AuraMessage handling. This keeps the handshake
+        backward-compatible: clients that never send HELLO still work.
+        """
+        try:
+            data = json.loads(raw)
+        except (json.JSONDecodeError, TypeError, ValueError):
+            return None
+        if not isinstance(data, dict) or data.get("type") != "hello":
+            return None
+
+        client_version = data.get("version", PROTOCOL_VERSION)
+        if client_version != PROTOCOL_VERSION:
+            return json.dumps({
+                "type": "hello_error",
+                "version": PROTOCOL_VERSION,
+                "server": "aura-engine",
+                "supported_versions": [PROTOCOL_VERSION],
+                "error": f"Unsupported protocol version: {client_version}",
+            })
+        return json.dumps({
+            "type": "hello_ack",
+            "version": PROTOCOL_VERSION,
+            "server": "aura-engine",
+            "capabilities": _SERVER_CAPABILITIES,
+        })
 
     async def handle_message(self, msg: AuraMessage) -> AuraResponse:
         """Route an incoming Aura message to the appropriate handler."""
@@ -189,6 +232,10 @@ class AuraWebSocketBridge:
         """
         try:
             async for raw_message in websocket:
+                hello = self.try_build_hello_ack(raw_message)
+                if hello is not None:
+                    await websocket.send(hello)
+                    continue
                 try:
                     msg = AuraMessage.from_json(raw_message)
                     response = await self.handle_message(msg)
@@ -196,5 +243,5 @@ class AuraWebSocketBridge:
                 except ValueError as exc:
                     err = AuraResponse(type=ResponseType.ERROR, payload=str(exc))
                     await websocket.send(err.to_json())
-        except Exception as exc:
+        except Exception:
             logger.exception("WebSocket connection error")
