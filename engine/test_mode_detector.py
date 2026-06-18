@@ -82,6 +82,19 @@ class TestModeDetector:
         result = md.detect(device_info={"location": "office"})
         assert result.mode == Mode.FLYDUBAI
 
+    def test_unknown_location_falls_through_to_time_based(self):
+        """Location that matches no keyword should fall through to time-based detection."""
+        md = ModeDetector()
+        # "cafe" matches neither home nor office keywords
+        result = md.detect(
+            current_time=time(10, 0),  # Flydubai working hours
+            device_info={"location": "cafe"},
+        )
+        # Should fall through to time-based: Flydubai at 10 AM
+        assert result.mode == Mode.FLYDUBAI
+        assert result.confidence == 0.7  # time-based confidence
+        assert "Flydubai working hours" in result.reason
+
     def test_confidence_is_between_0_and_1(self):
         md = ModeDetector()
         for hour in range(24):
