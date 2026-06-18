@@ -221,6 +221,50 @@ describe('Aura', () => {
     await expect(aura.show('Hello')).rejects.toThrow('Aura not initialized');
   });
 
+  it('show() renders Arabic text as image via updateImageRawData', async () => {
+    const bridge = mockBridge();
+    setupBridge(bridge);
+    (waitForEvenAppBridge as any).mockResolvedValue(bridge);
+
+    await aura.init();
+
+    await aura.show('مرحبا بالعالم');
+
+    expect(bridge.updateImageRawData).toHaveBeenCalled();
+    expect(bridge.textContainerUpgrade).not.toHaveBeenCalled();
+  });
+
+  it('show() renders English text via textContainerUpgrade', async () => {
+    const auraEn = new Aura({ lang: 'en', gestures: false });
+    const bridge = mockBridge();
+    setupBridge(bridge);
+    (waitForEvenAppBridge as any).mockResolvedValue(bridge);
+
+    await auraEn.init();
+
+    await auraEn.show('Hello World');
+
+    expect(bridge.textContainerUpgrade).toHaveBeenCalled();
+    expect(bridge.updateImageRawData).not.toHaveBeenCalled();
+
+    auraEn.dispose();
+  });
+
+  it('show() renders Urdu as image (RTL script)', async () => {
+    const auraUr = new Aura({ lang: 'ur', gestures: false });
+    const bridge = mockBridge();
+    setupBridge(bridge);
+    (waitForEvenAppBridge as any).mockResolvedValue(bridge);
+
+    await auraUr.init();
+
+    await auraUr.show('السلام علیکم');
+
+    expect(bridge.updateImageRawData).toHaveBeenCalled();
+    expect(bridge.textContainerUpgrade).not.toHaveBeenCalled();
+
+    auraUr.dispose();
+  });
   // --- Callbacks ---
 
   it('registers all callbacks', () => {
@@ -285,6 +329,51 @@ describe('Aura', () => {
     noGesturesAura.dispose();
   });
 
+  it('fires nod callback on IMU gesture (nod detection)', async () => {
+    const bridge = mockBridge();
+    let eventHandler: ((e: any) => void) | null = null;
+    setupBridge(bridge, {
+      eventHandler: (cb: any) => { eventHandler = cb; return () => {}; },
+    });
+    (waitForEvenAppBridge as any).mockResolvedValue(bridge);
+
+    const nodCb = jest.fn();
+    aura.onNod(nodCb);
+    await aura.init();
+
+    // Simulate IMU data that gestures engine interprets as nod
+    eventHandler!({
+      sysEvent: {
+        imuData: { x: 0.0, y: -9.8, z: 0.0 },
+      },
+    });
+
+    // Let async gesture processing complete
+    await new Promise((r) => setTimeout(r, 10));
+  });
+
+  it('fires shake callback on IMU gesture (shake detection)', async () => {
+    const bridge = mockBridge();
+    let eventHandler: ((e: any) => void) | null = null;
+    setupBridge(bridge, {
+      eventHandler: (cb: any) => { eventHandler = cb; return () => {}; },
+    });
+    (waitForEvenAppBridge as any).mockResolvedValue(bridge);
+
+    const shakeCb = jest.fn();
+    aura.onShake(shakeCb);
+    await aura.init();
+
+    // Simulate IMU data that gestures engine interprets as shake
+    eventHandler!({
+      sysEvent: {
+        imuData: { x: 15.0, y: 0.5, z: 5.0 },
+      },
+    });
+
+    // Let async gesture processing complete
+    await new Promise((r) => setTimeout(r, 10));
+  });
   // --- Hermes integration ---
 
   it('ask() sends query via Hermes bridge', async () => {
