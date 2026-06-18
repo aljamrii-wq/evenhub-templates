@@ -6,14 +6,29 @@ void main() {
     test('all addresses are non-empty', () {
       expect(AuraConfig.hermesBridgeWsUrl, isNotEmpty);
       expect(AuraConfig.auraEngineHttpBase, isNotEmpty);
+      expect(AuraConfig.hermesBridgeWssUrl, isNotEmpty);
+      expect(AuraConfig.auraEngineHttpsBase, isNotEmpty);
     });
 
-    test('hermesBridgeWsUrl starts with ws://', () {
+    test('ws:// URL is plaintext (Tailscale encrypted tunnel)', () {
       expect(AuraConfig.hermesBridgeWsUrl, startsWith('ws://'));
+      expect(AuraConfig.auraEngineHttpBase, startsWith('http://'));
     });
 
-    test('auraEngineHttpBase starts with http://', () {
-      expect(AuraConfig.auraEngineHttpBase, startsWith('http://'));
+    test('wss:// and https:// variants provided for non-Tailscale deploys', () {
+      expect(AuraConfig.hermesBridgeWssUrl, startsWith('wss://'));
+      expect(AuraConfig.auraEngineHttpsBase, startsWith('https://'));
+    });
+
+    test('TLS and non-TLS URLs share same host', () {
+      // Both variants should point to the same server
+      final wsHost = Uri.parse(AuraConfig.hermesBridgeWsUrl).host;
+      final wssHost = Uri.parse(AuraConfig.hermesBridgeWssUrl).host;
+      expect(wsHost, equals(wssHost));
+
+      final httpHost = Uri.parse(AuraConfig.auraEngineHttpBase).host;
+      final httpsHost = Uri.parse(AuraConfig.auraEngineHttpsBase).host;
+      expect(httpHost, equals(httpsHost));
     });
 
     test('BLE constants are positive', () {
@@ -33,7 +48,8 @@ void main() {
     });
 
     test('pagination intervals are positive', () {
-      expect(AuraConfig.evenAiPaginationInterval.inMilliseconds, greaterThan(0));
+      expect(
+          AuraConfig.evenAiPaginationInterval.inMilliseconds, greaterThan(0));
       expect(AuraConfig.textPageInterval.inMilliseconds, greaterThan(0));
     });
   });

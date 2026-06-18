@@ -22,6 +22,11 @@ class ImuData {
       z: (map['z'] as num).toDouble(),
     );
   }
+
+  @override
+  String toString() =>
+      'ImuData(x: ${x.toStringAsFixed(3)}, '
+      'y: ${y.toStringAsFixed(3)}, z: ${z.toStringAsFixed(3)})';
 }
 
 /// Gesture types detected from IMU data.
@@ -63,13 +68,16 @@ class ImuService {
   final List<ImuData> _buffer = [];
   static const int _bufferSize = 20;
   ImuData? _lastSample;
+  StreamSubscription? _imuEventSubscription;
 
   Future<bool> startStreaming() async {
     if (_isActive) return true;
     try {
       final result = await _channel.invokeMethod<bool>('startImu');
       _isActive = result ?? true;
-      const EventChannel('eventImu')
+      // Cancel any previous subscription to prevent duplicate listeners
+      await _imuEventSubscription?.cancel();
+      _imuEventSubscription = const EventChannel('eventImu')
           .receiveBroadcastStream('eventImu')
           .listen((event) {
         final imuData =
@@ -88,6 +96,8 @@ class ImuService {
     if (!_isActive) return;
     try {
       await _channel.invokeMethod('stopImu');
+      await _imuEventSubscription?.cancel();
+      _imuEventSubscription = null;
     } catch (e) {
       print('ImuService: failed to stop streaming — $e');
     } finally {

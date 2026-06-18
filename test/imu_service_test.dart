@@ -18,12 +18,14 @@ void main() {
       expect(data.z, equals(0.1));
     });
 
-    test('toString contains values', () {
+    test('toString contains formatted values', () {
       final data = ImuData(x: 1.234, y: -0.567, z: 0.0);
       final str = data.toString();
+      // ImuData.toString() formats with 3 decimal places
       expect(str, contains('1.234'));
       expect(str, contains('-0.567'));
       expect(str, contains('0.000'));
+      expect(str, startsWith('ImuData('));
     });
 
     test('timestamp can be overridden', () {

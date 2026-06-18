@@ -73,8 +73,18 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   }
 
   void _handleForeground() {
-    if (!BleManager.get.isConnected && BleManager.get.pairedGlasses.isNotEmpty) {
-      BleManager.get.resumeHeartbeat();
+    final ble = BleManager.get;
+    if (!ble.isConnected && ble.pairedGlasses.isNotEmpty) {
+      // Reconnect to the last paired glasses (resumeHeartbeat is a no-op
+      // when not connected — it only restarts heartbeat if already connected).
+      final lastGlasses = ble.pairedGlasses.last;
+      final channelNumber = lastGlasses['channelNumber'] ?? '';
+      if (channelNumber.isNotEmpty) {
+        ble.connectToGlasses('Pair_$channelNumber');
+      }
+    } else if (ble.isConnected) {
+      // Already connected — just resume heartbeat
+      ble.resumeHeartbeat();
     }
   }
 

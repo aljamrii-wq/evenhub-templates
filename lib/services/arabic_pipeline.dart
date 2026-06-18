@@ -27,33 +27,34 @@ class ArabicPipeline {
       return '(No speech recognized)';
     }
     _isProcessing = true;
+    late StreamSubscription<String> subscription;
     try {
       final query = _buildQuery(arabicText, mode);
-      await _bridge.sendChatQuery(query, mode: mode);
       final buffer = StringBuffer();
       final completer = Completer<String>();
-      late StreamSubscription<String> subscription;
+
+      // Subscribe BEFORE sending to avoid missing early chunks
       subscription = _bridge.textStream.listen(
         (chunk) => buffer.write(chunk),
-        onDone: () {
-          _isProcessing = false;
-          final result = buffer.toString();
-          _outputController.add(result);
-          if (!completer.isCompleted) completer.complete(result);
-        },
         onError: (error) {
-          _isProcessing = false;
-          final msg = 'Pipeline error: $error';
-          _outputController.add(msg);
-          if (!completer.isCompleted) completer.complete(msg);
+          if (!completer.isCompleted) {
+            _isProcessing = false;
+            final msg = 'Pipeline error: $error';
+            _outputController.add(msg);
+            completer.complete(msg);
+          }
         },
       );
+
+      // Send AFTER subscribing — bridge broadcast stream never closes,
+      // so we rely on timeout to finish collection
+      await _bridge.sendChatQuery(query, mode: mode);
+
       final result = await completer.future.timeout(
         const Duration(seconds: 30),
         onTimeout: () {
-          subscription.cancel();
           _isProcessing = false;
-          final msg = 'Pipeline timed out';
+          final msg = buffer.isNotEmpty ? buffer.toString() : 'Pipeline timed out';
           _outputController.add(msg);
           return msg;
         },
@@ -64,6 +65,8 @@ class ArabicPipeline {
       final msg = 'Arabic pipeline error: $e';
       _outputController.add(msg);
       return msg;
+    } finally {
+      subscription.cancel();
     }
   }
 
