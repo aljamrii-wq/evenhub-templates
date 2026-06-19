@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no" />
+    <title>Aura HUD</title>
+    <style>
+      html, body {
+        margin: 0;
+        height: 100%;
+        background: #232323;
+        color: #E5E5E5;
+        font: 14px/1.4 -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+        touch-action: manipulation;
+        -webkit-text-size-adjust: 100%;
+        overscroll-behavior: none;
+      }
+      #app {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        padding: 24px;
+        box-sizing: border-box;
+      }
+      #hud-mirror {
+        background: #1A1A1A;
+        border: 1px solid #3A3A3A;
+        border-radius: 16px;
+        padding: 32px 24px;
+        text-align: center;
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+      }
+      #hud-mirror .clock {
+        font-size: 48px;
+        font-weight: 700;
+        letter-spacing: 2px;
+        color: #E5E5E5;
+        margin: 0 0 8px;
+      }
+      #hud-mirror .date {
+        font-size: 16px;
+        color: #9B9B9B;
+        margin: 0 0 16px;
+      }
+      #hud-mirror .greeting {
+        font-size: 20px;
+        color: #C5C5C5;
+        margin: 0 0 8px;
+      }
+      #hud-mirror .status-row {
+        font-size: 13px;
+        color: #7B7B7B;
+        margin: 0 0 12px;
+        display: flex;
+        gap: 16px;
+        align-items: center;
+      }
+      #hud-mirror .status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        display: inline-block;
+      }
+      #hud-mirror .status-dot.online { background: #4ADE80; }
+      #hud-mirror .status-dot.offline { background: #F87171; }
+      #footer {
+        text-align: center;
+        font-size: 12px;
+        color: #6B6B6B;
+        margin-top: 16px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <div id="hud-mirror">
+        <div class="status-row">
+          <span id="mirror-mode">--</span>
+          <span class="status-dot offline" id="mirror-status"></span>
+          <span>Hermes</span>
+        </div>
+        <p class="clock" id="mirror-clock">--:--</p>
+        <p class="date" dir="auto" id="mirror-date">---</p>
+        <p class="greeting" dir="auto" id="mirror-greeting">---</p>
+      </div>
+      <div id="footer">
+        tap: refresh · double-tap: exit
+      </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

@@ -145,8 +145,8 @@ class EvenAI {
       return;
     }
 
-    final apiService = AuraEngineService();
-    String answer = await apiService.sendChatRequest(combinedText);
+    final transport = AuraTransport();
+    String answer = await transport.sendChat(combinedText);
   
     print("recordOverByOS----startSendReply---combinedText-------*$combinedText*-----answer----$answer----");
 
