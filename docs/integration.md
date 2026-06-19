@@ -71,6 +71,33 @@ configured, only localhost connections are accepted.
 `PROTOCOL_VERSION` is defined in both `aura-sdk/src/types.ts` and
 `engine/hermes_bridge.py` and must be kept in sync.
 
+## G2 IMU gesture handoff
+
+The Flutter gesture layer is isolated in
+`lib/services/imu_gesture_detector.dart` so BLE transport code can stay focused
+on Nordic UART packet delivery. When the native BLE dispatcher identifies the G2
+IMU notification opcode, pass the raw payload and side marker into
+`ImuEventParser`, then feed valid samples into `ImuGestureDetector`:
+
+```dart
+final parser = ImuEventParser(expectedCommand: imuCommandByte);
+final detector = ImuGestureDetector();
+
+final sample = parser.tryParseBytes(receive.data, side: receive.lr);
+if (sample != null) {
+  final gesture = detector.addSample(sample);
+  if (gesture != null) {
+    // Publish nod/shake/look through the app gesture stream.
+  }
+}
+```
+
+The parser also accepts EventChannel maps shaped like
+`{x, y, z, timestamp, lr, sequence}` for native IMU streams. Malformed packets
+return `null` and should be ignored by BLE dispatch. The detector handles nod,
+shake, and look gestures with a short debounce window to suppress duplicate
+events and low-amplitude false positives.
+
 ## Verifying the pipeline
 
 End-to-end, server side (decode the PNG, check geometry + Arabic ink):
