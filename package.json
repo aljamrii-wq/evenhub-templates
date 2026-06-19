@@ -3,9 +3,10 @@
   "private": true,
   "workspaces": [
     "aura-sdk",
-    "minimal",
     "asr",
+    "hud",
     "image",
+    "minimal",
     "text-heavy"
   ]
 }
