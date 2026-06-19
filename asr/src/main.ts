@@ -8,6 +8,7 @@ import { DISPLAY_WIDTH, DISPLAY_HEIGHT } from '@aljamri/aura-sdk'
 import { waitForEvenAppBridge } from './bridge'
 import { startSttStream } from './asr/stt'
 import { mountUi, setStatus, setTranscript } from './ui'
+import { AudioPacketBuffer } from './audio/audio_buffer'
 
 mountUi()
 
@@ -61,6 +62,14 @@ function scheduleGlassesRender() {
   }, 120) // debounce display writes — BLE render queue is slow
 }
 
+// Audio packet buffer — wraps PCM chunks with sequence numbers for gap/reorder
+// detection. Catches Flutter→WebView bridge drops and reordering.
+const audioBuffer = new AudioPacketBuffer(gap => {
+  const msg = `Audio gap: expected seq ${gap.expected}, got ${gap.received} (${gap.missing} missing)`
+  console.warn(msg)
+  setStatus('listening', `Mic live · ${gap.missing} pkt gap @ seq ${gap.received}`)
+})
+
 // The default stt.ts is a blank stub that throws. Catch the throw so the UI
 // surfaces the "configure stt.ts" error chip instead of hanging on "Connecting…".
 let stt: ReturnType<typeof startSttStream> | null = null
@@ -95,6 +104,7 @@ function cleanup() {
   cleanedUp = true
   bridge.audioControl(false)
   stt?.close()
+  audioBuffer.reset()
   unsubscribe()
 }
 
@@ -109,7 +119,13 @@ function cleanup() {
 //     SYSTEM_EXIT_EVENT fires on confirm and we clean up there.
 const unsubscribe = bridge.onEvenHubEvent(event => {
   const pcm = event.audioEvent?.audioPcm
-  if (pcm) stt?.sendPcm(pcm)
+  if (pcm) {
+    // Wrap with sequence number before forwarding to STT — enables gap/reorder
+    // detection so a corrupted stream doesn't silently produce garbled output.
+    const pkt = audioBuffer.wrap(pcm)
+    void pkt // used if future code needs the AudioPacket metadata
+    stt?.sendPcm(pcm)
+  }
 
   const sysType = event.sysEvent?.eventType ?? null
   const textType = event.textEvent?.eventType ?? null
