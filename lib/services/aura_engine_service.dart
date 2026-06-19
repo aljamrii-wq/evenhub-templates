@@ -245,9 +245,16 @@ class AuraEngineService {
       final response = await request.close();
       final body = await response.transform(utf8.decoder).join();
       if (response.statusCode == 200) {
-        final data = jsonDecode(body);
-        final answer = data['answer'] ?? data['text'] ?? body;
-        return answer.toString();
+        try {
+          final data = jsonDecode(body);
+          if (data is Map<String, dynamic>) {
+            final answer = data['answer'] ?? data['text'] ?? body;
+            return answer.toString();
+          }
+        } on FormatException {
+          return body;
+        }
+        return body;
       } else {
         print('Aura Engine error: ${response.statusCode} - $body');
         return 'Aura Engine error: ${response.statusCode}';
