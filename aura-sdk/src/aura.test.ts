@@ -1,4 +1,12 @@
 import { Aura } from './aura';
+import { waitForEvenAppBridge } from '@evenrealities/even_hub_sdk';
+
+const mockHermesConnect = jest.fn().mockResolvedValue(undefined);
+const mockHermesSend = jest.fn();
+const mockHermesOnMessage = jest.fn();
+const mockHermesOnDisconnect = jest.fn();
+const mockHermesDisconnect = jest.fn();
+const mockHermesIsConnected = jest.fn().mockReturnValue(false);
 
 // Mock Even Hub SDK
 jest.mock('@evenrealities/even_hub_sdk', () => ({
@@ -13,10 +21,12 @@ jest.mock('@evenrealities/even_hub_sdk', () => ({
 // Mock sub-modules
 jest.mock('./hermes', () => ({
   HermesBridge: jest.fn().mockImplementation(() => ({
-    connect: jest.fn().mockResolvedValue(undefined),
-    send: jest.fn(),
-    onMessage: jest.fn(),
-    disconnect: jest.fn(),
+    connect: mockHermesConnect,
+    send: mockHermesSend,
+    onMessage: mockHermesOnMessage,
+    onDisconnect: mockHermesOnDisconnect,
+    disconnect: mockHermesDisconnect,
+    isConnected: mockHermesIsConnected,
   })),
 }));
 
@@ -47,6 +57,9 @@ describe('Aura', () => {
   let aura: Aura;
 
   beforeEach(() => {
+    jest.clearAllMocks();
+    mockHermesConnect.mockResolvedValue(undefined);
+    mockHermesIsConnected.mockReturnValue(false);
     aura = new Aura();
   });
 
@@ -101,6 +114,72 @@ describe('Aura', () => {
     it('onMessage registers without firing', () => {
       const cb = jest.fn();
       expect(() => aura.onMessage(cb)).not.toThrow();
+    });
+
+    it('onDisconnect registers without firing', () => {
+      const cb = jest.fn();
+      expect(() => aura.onDisconnect(cb)).not.toThrow();
+    });
+  });
+
+  describe('connection lifecycle', () => {
+    const mockBridge = {
+      createStartUpPageContainer: jest.fn().mockResolvedValue(0),
+      getDeviceInfo: jest.fn().mockResolvedValue(null),
+      onEvenHubEvent: jest.fn().mockReturnValue(jest.fn()),
+      imuControl: jest.fn().mockResolvedValue(undefined),
+      updateImageRawData: jest.fn().mockResolvedValue(undefined),
+      textContainerUpgrade: jest.fn().mockResolvedValue(undefined),
+      shutDownPageContainer: jest.fn().mockResolvedValue(undefined),
+    };
+
+    beforeEach(() => {
+      (waitForEvenAppBridge as jest.Mock).mockResolvedValue(mockBridge);
+    });
+
+    it('registers a Hermes disconnect handler during init', async () => {
+      await aura.init();
+
+      expect(mockHermesOnDisconnect).toHaveBeenCalledWith(expect.any(Function));
+    });
+
+    it('returns false from isBothConnected before init', () => {
+      mockHermesIsConnected.mockReturnValue(true);
+
+      expect(aura.isBothConnected()).toBe(false);
+    });
+
+    it('returns false from isBothConnected when Hermes is not connected', async () => {
+      mockHermesIsConnected.mockReturnValue(false);
+      await aura.init();
+
+      expect(aura.isBothConnected()).toBe(false);
+    });
+
+    it('returns true from isBothConnected when bridge and Hermes are connected', async () => {
+      mockHermesIsConnected.mockReturnValue(true);
+      await aura.init();
+
+      expect(aura.isBothConnected()).toBe(true);
+    });
+
+    it('exposes Hermes connection state', () => {
+      mockHermesIsConnected.mockReturnValueOnce(false).mockReturnValueOnce(true);
+
+      expect(aura.isHermesConnected).toBe(false);
+      expect(aura.isHermesConnected).toBe(true);
+    });
+
+    it('disconnect callback marks Aura not ready', async () => {
+      const cb = jest.fn();
+      aura.onDisconnect(cb);
+      await aura.init();
+      const handler = mockHermesOnDisconnect.mock.calls[0][0];
+
+      handler();
+
+      expect(cb).toHaveBeenCalled();
+      expect(aura.isReady).toBe(false);
     });
   });
 });

@@ -25,12 +25,14 @@ import type {
 import { PROTOCOL_VERSION } from './types';
 
 type MessageHandler = (msg: HermesResponse) => void;
+type DisconnectHandler = () => void;
 
 export class HermesBridge {
   private url: string;
   private token: string | undefined;
   private ws: WebSocket | null = null;
   private handlers: MessageHandler[] = [];
+  private disconnectHandlers: DisconnectHandler[] = [];
   private reconnectDelay = 1000;
   private maxDelay = 30000;
   private shouldReconnect = true;
@@ -106,12 +108,18 @@ export class HermesBridge {
       };
 
       ws.onclose = () => {
+        const shouldNotifyDisconnect = this._ready && this.shouldReconnect;
         this._ready = false;
         // A close before connect() settled means the handshake never completed.
         if (!this._settled) {
           this._settle(() =>
             this._rejectConnect?.(new Error('WebSocket closed during handshake')),
           );
+        }
+        if (shouldNotifyDisconnect) {
+          for (const handler of this.disconnectHandlers) {
+            try { handler(); } catch { /* ignore handler errors */ }
+          }
         }
         if (this.shouldReconnect) {
           this.reconnectTimer = setTimeout(() => this._reconnect(), this.reconnectDelay);
@@ -129,16 +137,26 @@ export class HermesBridge {
     });
   }
 
-  /** Send a message to Hermes (no-op if the socket isn't open). */
+  /** Send a message to Hermes (no-op if the socket is not ready). */
   send(msg: HermesMessage): void {
-    if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify(msg));
+    if (this.isConnected()) {
+      this.ws?.send(JSON.stringify(msg));
     }
   }
 
   /** Register a message handler. */
   onMessage(handler: MessageHandler): void {
     this.handlers.push(handler);
+  }
+
+  /** Register a disconnect handler. */
+  onDisconnect(handler: DisconnectHandler): void {
+    this.disconnectHandlers.push(handler);
+  }
+
+  /** True when the WebSocket is open and the HELLO handshake has completed. */
+  isConnected(): boolean {
+    return this.ws?.readyState === 1 && this._ready;
   }
 
   /** Disconnect — cancels reconnect and closes the socket. */

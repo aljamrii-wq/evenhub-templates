@@ -62,6 +62,7 @@ export class Aura {
   private onShakeCb: (() => void) | null = null;
   private onModeChangeCb: ((mode: ModeContext) => void) | null = null;
   private onMessageCb: ((msg: AuraResponse) => void) | null = null;
+  private onDisconnectCb: (() => void) | null = null;
   private onExitCb: (() => void) | null = null;
 
   constructor(config: Partial<AuraConfig> = {}) {
@@ -197,6 +198,10 @@ export class Aura {
     // is unreachable, so a failed connect degrades gracefully (HermesBridge
     // keeps retrying with backoff) instead of failing init().
     this.hermes.onMessage((msg) => this.onMessageCb?.(msg));
+    this.hermes.onDisconnect(() => {
+      this.ready = false;
+      this.onDisconnectCb?.();
+    });
     try {
       await this.hermes.connect();
     } catch (err) {
@@ -231,6 +236,7 @@ export class Aura {
     this.onShakeCb = null;
     this.onModeChangeCb = null;
     this.onMessageCb = null;
+    this.onDisconnectCb = null;
     this.onExitCb = null;
 
     this.ready = false;
@@ -293,6 +299,9 @@ export class Aura {
   onModeChange(cb: (mode: ModeContext) => void): void { this.onModeChangeCb = cb; }
   onMessage(cb: (msg: AuraResponse) => void): void { this.onMessageCb = cb; }
 
+  /** Register callback for Hermes disconnects. */
+  onDisconnect(cb: () => void): void { this.onDisconnectCb = cb; }
+
   /** Register callback for app exit (double-tap or system-initiated) */
   onExit(cb: () => void): void { this.onExitCb = cb; }
 
@@ -301,4 +310,14 @@ export class Aura {
   get currentMode(): AuraMode { return this.modes.current; }
   get isReady(): boolean { return this.ready; }
   get bridgeInstance(): EvenAppBridge | null { return this.bridge; }
+
+  /** True when both the Even Hub bridge exists and Hermes is connected. */
+  isBothConnected(): boolean {
+    return this.bridge !== null && this.hermes.isConnected();
+  }
+
+  /** True when Hermes WebSocket is connected and protocol-ready. */
+  get isHermesConnected(): boolean {
+    return this.hermes.isConnected();
+  }
 }

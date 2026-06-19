@@ -1,0 +1,62 @@
+# Codemagic CI for Aura Flutter iOS.
+#
+# Default lane: unsigned analysis, tests, and debug iOS build. It does not
+# require Apple signing credentials and does not upload to TestFlight or the
+# App Store.
+#
+# Future owner-gated signed builds must keep signing data in a Codemagic secret
+# variable group, for example `aura_ios_signing`. Do not commit these values:
+# - APP_STORE_CONNECT_KEY_IDENTIFIER
+# - APP_STORE_CONNECT_ISSUER_ID
+# - APP_STORE_CONNECT_PRIVATE_KEY
+# - IOS_SIGNING_CERTIFICATE
+# - IOS_SIGNING_CERTIFICATE_PASSWORD
+# - IOS_PROVISIONING_PROFILE
+#
+# Publishing is intentionally absent. Add TestFlight/App Store upload only after
+# owner approval and keep it disabled from the default CI lane.
+
+workflows:
+  flutter-ios-ci:
+    name: Flutter iOS CI (unsigned)
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    environment:
+      flutter: stable
+      xcode: latest
+      cocoapods: default
+      vars:
+        CI_UNSIGNED_IOS_BUILD: "true"
+    triggering:
+      events:
+        - pull_request
+        - push
+      branch_patterns:
+        - pattern: "*"
+          include: true
+          source: true
+        - pattern: dev
+          include: true
+          source: false
+      cancel_previous_builds: true
+    scripts:
+      - name: Confirm unsigned CI lane
+        script: |
+          set -eu
+          echo "Running unsigned Flutter iOS CI. Signing, TestFlight, and App Store upload are disabled."
+      - name: Get Flutter packages
+        script: flutter pub get
+      - name: Analyze Dart and Flutter code
+        script: flutter analyze
+      - name: Run Flutter tests
+        script: flutter test
+      - name: Install iOS pods
+        script: |
+          set -eu
+          find ios -name "Podfile" -execdir pod install \;
+      - name: Build unsigned iOS debug app
+        script: flutter build ios --debug --no-codesign
+    artifacts:
+      - build/ios/iphoneos/*.app
+      - build/ios/iphoneos/*.app/**/*
+      - /tmp/xcodebuild_logs/*.log
