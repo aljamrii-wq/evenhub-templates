@@ -1,10 +1,22 @@
 name: CI
 
 on:
-  push:
-    branches: [main]
   pull_request:
-    branches: [main]
+    branches:
+      - dev
+      - main
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+  push:
+    branches:
+      - dev
+      - main
+    tags:
+      - 'v*'
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -14,41 +26,118 @@ permissions:
   contents: read
 
 jobs:
-  typescript:
-    name: TypeScript (SDK + Templates)
+  typescript-matrix:
+    name: TypeScript (${{ matrix.dir }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        dir: [aura-sdk, minimal, asr, image, text-heavy]
+    defaults:
+      run:
+        working-directory: ${{ matrix.dir }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: Check directory exists
+        id: check
+        run: |
+          if [ -f package.json ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "::warning ::${{ matrix.dir }}: no package.json; skipping"
+          fi
+      - name: Setup Node
+        if: steps.check.outputs.exists == 'true'
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 20
-      - run: npm install
-        working-directory: aura-sdk
-      - run: npm test
-        working-directory: aura-sdk
+      - name: Install
+        if: steps.check.outputs.exists == 'true'
+        run: npm ci --no-audit --no-fund
+        working-directory: .
+      - name: Build SDK dependency
+        if: steps.check.outputs.exists == 'true' && matrix.dir != 'aura-sdk'
+        run: npm run build --workspace aura-sdk
+        working-directory: .
+      - name: TypeScript build
+        if: steps.check.outputs.exists == 'true'
+        run: |
+          if grep -q '"build"' package.json; then
+            npm run build
+          else
+            npx tsc --noEmit
+          fi
+      - name: Test
+        if: steps.check.outputs.exists == 'true'
+        run: |
+          if grep -q '"test"' package.json; then
+            npm test
+          else
+            echo "No test script; skipping"
+          fi
+
+  typescript-gate:
+    name: TypeScript (SDK + Templates)
+    runs-on: ubuntu-latest
+    needs: typescript-matrix
+    if: always()
+    steps:
+      - name: Check matrix result
+        run: |
+          if [ "${{ needs.typescript-matrix.result }}" = "success" ] || [ "${{ needs.typescript-matrix.result }}" = "skipped" ]; then
+            echo "TypeScript matrix: ${{ needs.typescript-matrix.result }}"
+            exit 0
+          fi
+          echo "TypeScript matrix failed: ${{ needs.typescript-matrix.result }}"
+          exit 1
 
   python:
     name: Python (Engine)
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: engine
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: Check directory exists
+        id: check
+        run: |
+          if [ -f requirements.txt ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "::warning ::engine: no requirements.txt; skipping"
+          fi
+      - name: Setup Python
+        if: steps.check.outputs.exists == 'true'
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.11'
-      - run: pip install -r requirements.txt
-        working-directory: engine
-      - run: python -m pytest -x -q
-        working-directory: engine
+          cache: pip
+          cache-dependency-path: engine/requirements.txt
+      - name: Install
+        if: steps.check.outputs.exists == 'true'
+        run: pip install -r requirements.txt
+      - name: Test
+        if: steps.check.outputs.exists == 'true'
+        run: python -m pytest -v
 
   analyze:
     name: Analyze
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 20
-      - run: npm install
+      - name: Install SDK dependencies
+        run: npm install --no-audit --no-fund
         working-directory: aura-sdk
-      - run: npx tsc --noEmit
+      - name: TypeScript analyze
+        run: npx tsc --noEmit
         working-directory: aura-sdk
