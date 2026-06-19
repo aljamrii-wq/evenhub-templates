@@ -1,6 +1,6 @@
 # Aura — Smart Glasses App Framework
 
-Aura wraps the [Even Realities G2](https://www.evenrealities.com/) SDK with Arabic/RTL rendering, head-gesture IMU detection, Hermes AI bridge, and mode auto-switching. Four starter templates ship out of the box.
+Aura wraps the [Even Realities G2](https://www.evenrealities.com/) SDK with Arabic/RTL rendering, head-gesture IMU detection, Hermes AI bridge, and mode auto-switching. Five starter templates ship out of the box.
 
 ## Templates
 
@@ -10,6 +10,7 @@ Aura wraps the [Even Realities G2](https://www.evenrealities.com/) SDK with Arab
 | [`asr/`](./asr) | Live mic → speech-to-text pipeline with companion UI and double-tap exit. STT provider is a blank stub — plug in your own. |
 | [`image/`](./image) | Image container rendering. Preprocessing/dithering is optional; the SDK handles grayscale conversion. |
 | [`text-heavy/`](./text-heavy) | Long-form text with tap-to-advance pagination. Pixel-accurate line measurement via @evenrealities/pretext. |
+| [`hud/`](./hud) | Heads-up display showing time, battery, IMU gestures, mode, and Hermes connection status. |
 
 ## Quick start
 
@@ -31,7 +32,7 @@ TypeScript SDK wrapping the Even Hub G2 SDK with Arabic text rendering, IMU gest
 ```bash
 cd aura-sdk
 npm install
-npm test                        # 107 tests pass
+npm test                        # 122 tests pass
 npm run build                   # typecheck + ESM fix
 ```
 
@@ -117,7 +118,7 @@ cd engine
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-pytest -v                          # 134 tests pass
+pytest -v                          # 167 tests pass
 python main.py                     # http://127.0.0.1:8000
 ```
 
