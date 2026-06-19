@@ -94,6 +94,9 @@ describe('HermesBridge', () => {
       mockWs.readyState = 1;
       mockWs.onopen?.();
       await connectPromise;
+      mockWs.onmessage?.({ data: JSON.stringify({
+        type: 'hello_ack', version: 1, server: 'aura-engine', capabilities: {},
+      }) });
 
       const msg: HermesMessage = { type: 'query', payload: 'test', mode: 'personal' };
       bridge.send(msg);
@@ -155,6 +158,56 @@ describe('HermesBridge', () => {
       const handler = jest.fn();
       bridge.onMessage(handler);
       expect(() => mockWs.onmessage?.({ data: 'not json' })).not.toThrow();
+      expect(handler).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('connection state', () => {
+    it('is connected only after HELLO ack on an open socket', async () => {
+      const connectPromise = bridge.connect();
+      mockWs.readyState = 1;
+      mockWs.onopen?.();
+      await connectPromise;
+
+      expect(bridge.isConnected()).toBe(false);
+
+      mockWs.onmessage?.({ data: JSON.stringify({
+        type: 'hello_ack', version: 1, server: 'aura-engine', capabilities: {},
+      }) });
+
+      expect(bridge.isConnected()).toBe(true);
+    });
+
+    it('calls registered disconnect handlers after a ready connection closes', async () => {
+      const handler = jest.fn();
+      bridge.onDisconnect(handler);
+      const connectPromise = bridge.connect();
+      mockWs.readyState = 1;
+      mockWs.onopen?.();
+      await connectPromise;
+      mockWs.onmessage?.({ data: JSON.stringify({
+        type: 'hello_ack', version: 1, server: 'aura-engine', capabilities: {},
+      }) });
+
+      mockWs.onclose?.();
+
+      expect(handler).toHaveBeenCalledTimes(1);
+      expect(bridge.isConnected()).toBe(false);
+    });
+
+    it('does not call disconnect handlers for intentional disconnect', async () => {
+      const handler = jest.fn();
+      bridge.onDisconnect(handler);
+      const connectPromise = bridge.connect();
+      mockWs.readyState = 1;
+      mockWs.onopen?.();
+      await connectPromise;
+      mockWs.onmessage?.({ data: JSON.stringify({
+        type: 'hello_ack', version: 1, server: 'aura-engine', capabilities: {},
+      }) });
+
+      bridge.disconnect();
+
       expect(handler).not.toHaveBeenCalled();
     });
   });
