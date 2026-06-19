@@ -9,10 +9,10 @@
 /// and point Hermes Bridge behind a TLS-terminating reverse proxy (nginx/Caddy).
 class AuraConfig {
   /// Hermes Bridge WebSocket URL (Tailscale-encrypted tunnel).
-  static const String hermesBridgeWsUrl = 'ws://100.76.131.27:8787';
+  static const String hermesBridgeWsUrl = 'ws://100.76.131.27:8000/ws/aura';
 
   /// Hermes Bridge secure WebSocket URL (for non-Tailscale deployments).
-  static const String hermesBridgeWssUrl = 'wss://100.76.131.27:8787';
+  static const String hermesBridgeWssUrl = 'wss://100.76.131.27/ws/aura';
 
   /// Aura Engine HTTP base URL (Tailscale-encrypted tunnel).
   static const String auraEngineHttpBase = 'http://100.76.131.27:8000';
@@ -46,4 +46,7 @@ class AuraConfig {
 
   /// Hermes Bridge reconnection delay.
   static const Duration wsReconnectDelay = Duration(seconds: 2);
+
+  /// Maximum wait for a WebSocket query response before HTTP fallback.
+  static const Duration transportBridgeTimeout = Duration(seconds: 30);
 }

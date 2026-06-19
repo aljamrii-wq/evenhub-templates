@@ -11,7 +11,7 @@ class ArabicPipeline {
 
   ArabicPipeline._();
 
-  final HermesBridgeService _bridge = HermesBridgeService();
+  final AuraTransport _transport = AuraTransport();
 
   bool _isProcessing = false;
   bool get isProcessing => _isProcessing;
@@ -27,46 +27,21 @@ class ArabicPipeline {
       return '(No speech recognized)';
     }
     _isProcessing = true;
-    late StreamSubscription<String> subscription;
     try {
       final query = _buildQuery(arabicText, mode);
-      final buffer = StringBuffer();
-      final completer = Completer<String>();
-
-      // Subscribe BEFORE sending to avoid missing early chunks
-      subscription = _bridge.textStream.listen(
-        (chunk) => buffer.write(chunk),
-        onError: (error) {
-          if (!completer.isCompleted) {
-            _isProcessing = false;
-            final msg = 'Pipeline error: $error';
-            _outputController.add(msg);
-            completer.complete(msg);
-          }
-        },
+      final result = await _transport.sendChat(
+        query,
+        mode: _transportMode(mode),
       );
-
-      // Send AFTER subscribing — bridge broadcast stream never closes,
-      // so we rely on timeout to finish collection
-      await _bridge.sendChatQuery(query, mode: mode);
-
-      final result = await completer.future.timeout(
-        const Duration(seconds: 30),
-        onTimeout: () {
-          _isProcessing = false;
-          final msg = buffer.isNotEmpty ? buffer.toString() : 'Pipeline timed out';
-          _outputController.add(msg);
-          return msg;
-        },
-      );
-      return _formatForG2(result);
+      final formatted = _formatForG2(result);
+      _isProcessing = false;
+      _outputController.add(formatted);
+      return formatted;
     } catch (e) {
       _isProcessing = false;
       final msg = 'Arabic pipeline error: $e';
       _outputController.add(msg);
       return msg;
-    } finally {
-      subscription.cancel();
     }
   }
 
@@ -78,7 +53,7 @@ class ArabicPipeline {
       final engine = AuraEngineService();
       final answer =
           await engine.sendChatRequest(_buildQuery(arabicText, mode),
-              mode: mode);
+              mode: _transportMode(mode));
       _isProcessing = false;
       final result = _formatForG2(answer);
       _outputController.add(result);
@@ -102,6 +77,16 @@ class ArabicPipeline {
     }
   }
 
+  String _transportMode(String mode) {
+    switch (mode) {
+      case 'flydubai':
+      case 'aljamri':
+        return mode;
+      default:
+        return 'personal';
+    }
+  }
+
   String _formatForG2(String text) {
     final cleaned = text.replaceAll(RegExp(r'[^\x00-\x7F\s]'), '');
     if (cleaned.length > 500) {
@@ -110,10 +95,10 @@ class ArabicPipeline {
     return cleaned;
   }
 
-  Future<bool> connect() => _bridge.connect();
+  Future<bool> connect() => _transport.bridge.connect();
 
   void dispose() {
-    _bridge.dispose();
+    _transport.dispose();
     _outputController.close();
   }
 }
