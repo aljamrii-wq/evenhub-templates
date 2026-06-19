@@ -42,6 +42,8 @@ dependencies:
   crclib: ^3.0.0
   # Toast - https://pub.dev/packages/fluttertoast
   fluttertoast: ^8.2.8
+  # WebView host for Even Hub-style .ehpk companion app content.
+  webview_flutter: 4.9.0
 
 
 dev_dependencies:
