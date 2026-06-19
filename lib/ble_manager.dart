@@ -121,11 +121,62 @@ class BleManager {
       onStatusChanged?.call();
   }
 
+  int _reconnectAttempts = 0;
+  static const int _maxReconnectAttempts = 5;
+  static const Duration _reconnectDelay = Duration(seconds: 5);
+  Timer? _reconnectTimer;
+
   void _onGlassesDisconnected() {
     connectionStatus = 'Not connected';
     isConnected = false;
 
+    beatHeartTimer?.cancel();
+    beatHeartTimer = null;
+
     onStatusChanged?.call();
+
+    // Auto-reconnect if we were previously connected
+    if (_reconnectAttempts < _maxReconnectAttempts && pairedGlasses.isNotEmpty) {
+      _reconnectTimer?.cancel();
+      _reconnectTimer = Timer(_reconnectDelay, () {
+        _reconnectAttempts++;
+        print('BleManager: auto-reconnect attempt $_reconnectAttempts/$_maxReconnectAttempts');
+        // Try reconnecting to the last paired glasses
+        if (pairedGlasses.isNotEmpty) {
+          final lastGlasses = pairedGlasses.last;
+          final channelNumber = lastGlasses['channelNumber'] ?? '';
+          if (channelNumber.isNotEmpty) {
+            connectToGlasses('Pair_$channelNumber');
+          }
+        }
+      });
+    }
+  }
+
+  void cancelReconnect() {
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+    _reconnectAttempts = 0;
+  }
+
+  /// Suspend the heartbeat timer (e.g., when app is backgrounded).
+  void suspendHeartbeat() {
+    beatHeartTimer?.cancel();
+    beatHeartTimer = null;
+  }
+
+  /// Resume the heartbeat timer if currently connected.
+  void resumeHeartbeat() {
+    if (isConnected) {
+      startSendBeatHeart();
+    }
+  }
+
+  /// Full cleanup of BLE resources on app termination.
+  void dispose() {
+    suspendHeartbeat();
+    cancelReconnect();
+    _reconnectAttempts = _maxReconnectAttempts; // prevent further reconnect
   }
 
   void _onPairedGlassesFound(Map<String, String> deviceInfo) {
@@ -354,10 +405,11 @@ class BleManager {
   }
 
   static bool isBothConnected() {
-    //return isConnectedL() && isConnectedR();
-
-    // todo
-    return true;
+    // Check actual connection state from the singleton instance
+    // instead of the previous hardcoded true (ALJ-2329).
+    final instance = _instance;
+    if (instance == null) return false;
+    return instance.isConnected;
   }
 
   static Future<bool> requestList(

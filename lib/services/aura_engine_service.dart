@@ -1,35 +1,190 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-/// Client for the Aura Engine backend.
+import 'package:aura_app/services/config_service.dart';
+
+/// Hermes Bridge WebSocket client for real-time Aura Engine communication.
 ///
-/// Replaces the Even/DeepSeek AI service with our own backend
-/// running at Aura Engine (Tailscale: 100.76.131.27:8000).
+/// Connects to the Hermes bridge running on the server (Tailscale IP)
+/// and streams responses back to the glasses in real-time.
+///
+/// Protocol: JSON over WebSocket
+///   → { "type": "chat", "query": "...", "mode": "..." }
+///   ← { "type": "chunk", "text": "..." }
+///   ← { "type": "done", "text": "full answer" }
+///   ← { "type": "error", "message": "..." }
+class HermesBridgeService {
+  final String _wsUrl;
+  WebSocket? _ws;
+  bool _isConnected = false;
+
+  int _reconnectAttempts = 0;
+  static const int _maxReconnectAttempts = AuraConfig.wsMaxReconnectAttempts;
+  static const Duration _reconnectDelay = AuraConfig.wsReconnectDelay;
+  Timer? _reconnectTimer;
+
+  final StreamController<String> _textController =
+      StreamController<String>.broadcast();
+
+  Stream<String> get textStream => _textController.stream;
+  bool get isConnected => _isConnected;
+
+  HermesBridgeService({
+    String? wsUrl,
+  }) : _wsUrl = wsUrl ?? AuraConfig.hermesBridgeWsUrl;
+
+  Future<bool> connect() async {
+    if (_isConnected) return true;
+    try {
+      _ws = await WebSocket.connect(_wsUrl)
+          .timeout(AuraConfig.wsConnectTimeout);
+      _isConnected = true;
+      _reconnectAttempts = 0;
+      _ws!.listen(
+        _onMessage,
+        onError: _onError,
+        onDone: _onDone,
+        cancelOnError: false,
+      );
+      return true;
+    } catch (e) {
+      print('HermesBridge: connection failed — $e');
+      _scheduleReconnect();
+      return false;
+    }
+  }
+
+  Future<void> sendChatQuery(String query, {String mode = 'chat'}) async {
+    if (!_isConnected) {
+      final connected = await connect();
+      if (!connected) {
+        _textController.add('Aura Engine: connection failed.');
+        return;
+      }
+    }
+    final message = jsonEncode({
+      'type': 'chat',
+      'query': query,
+      'mode': mode,
+    });
+    try {
+      _ws!.add(message);
+    } catch (e) {
+      print('HermesBridge: send failed — $e');
+      _textController.add('Aura Engine: send error.');
+      _handleDisconnect();
+    }
+  }
+
+  Future<void> sendRaw(Map<String, dynamic> data) async {
+    if (!_isConnected) {
+      final connected = await connect();
+      if (!connected) return;
+    }
+    try {
+      _ws!.add(jsonEncode(data));
+    } catch (e) {
+      print('HermesBridge: raw send failed — $e');
+      _handleDisconnect();
+    }
+  }
+
+  void _onMessage(dynamic message) {
+    try {
+      final data = jsonDecode(message as String) as Map<String, dynamic>;
+      final type = data['type'] as String?;
+      switch (type) {
+        case 'chunk':
+          final text = data['text'] as String?;
+          if (text != null) _textController.add(text);
+          break;
+        case 'done':
+          final text = data['text'] as String?;
+          if (text != null) _textController.add(text);
+          break;
+        case 'error':
+          final msg = data['message'] as String? ?? 'Unknown error';
+          _textController.add('Error: $msg');
+          break;
+      }
+    } catch (e) {
+      print('HermesBridge: failed to parse message — $e');
+    }
+  }
+
+  void _onError(dynamic error) {
+    print('HermesBridge: WebSocket error — $error');
+    _handleDisconnect();
+  }
+
+  void _onDone() {
+    print('HermesBridge: WebSocket closed');
+    _handleDisconnect();
+  }
+
+  void _handleDisconnect() {
+    _isConnected = false;
+    _ws = null;
+    _scheduleReconnect();
+  }
+
+  void _scheduleReconnect() {
+    if (_reconnectAttempts >= _maxReconnectAttempts) {
+      print('HermesBridge: max reconnect attempts reached');
+      _textController.add('Aura Engine: connection lost.');
+      return;
+    }
+    _reconnectTimer?.cancel();
+    _reconnectTimer = Timer(_reconnectDelay, () {
+      _reconnectAttempts++;
+      print(
+          'HermesBridge: reconnecting (attempt $_reconnectAttempts/$_maxReconnectAttempts)...');
+      connect();
+    });
+  }
+
+  Future<void> disconnect() async {
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+    if (_ws != null) {
+      await _ws!.close();
+      _ws = null;
+    }
+    _isConnected = false;
+    _reconnectAttempts = _maxReconnectAttempts;
+  }
+
+  void dispose() {
+    _reconnectTimer?.cancel();
+    _textController.close();
+    _ws?.close();
+    _ws = null;
+    _isConnected = false;
+  }
+}
+
+/// HTTP client for Aura Engine (non-streaming fallback).
 class AuraEngineService {
   late final String _baseUrl;
 
   AuraEngineService({String? baseUrl}) {
-    // Default to Aura Engine on Tailscale; falls back to external IP
-    _baseUrl = baseUrl ?? 'http://100.76.131.27:8000';
+    _baseUrl = baseUrl ?? AuraConfig.auraEngineHttpBase;
   }
 
-  /// Send a chat query to Aura Engine and get text response.
-  /// Returns plain text suitable for rendering on glasses.
-  Future<String> sendChatRequest(String question) async {
+  Future<String> sendChatRequest(String question,
+      {String mode = 'chat'}) async {
     final uri = Uri.parse('$_baseUrl/chat');
     final client = HttpClient();
-
     try {
       final request = await client.postUrl(uri);
       request.headers.contentType = ContentType.json;
       request.write(jsonEncode({
         'query': question,
-        'mode': 'chat',
+        'mode': mode,
       }));
-
       final response = await request.close();
       final body = await response.transform(utf8.decoder).join();
-
       if (response.statusCode == 200) {
         final data = jsonDecode(body);
         final answer = data['answer'] ?? data['text'] ?? body;
