@@ -6,7 +6,7 @@ import {
   TextContainerUpgrade,
   OsEventTypeList,
 } from '@evenrealities/even_hub_sdk'
-import { DISPLAY_WIDTH, DISPLAY_HEIGHT } from '@aljamri/aura-sdk'
+import { DISPLAY_WIDTH, DISPLAY_HEIGHT, assertPayloadSize, validatePayload } from '@aljamri/aura-sdk'
 import { waitForEvenAppBridge } from './bridge'
 import { loadImageBytes } from './image/renderer'
 
@@ -80,6 +80,11 @@ async function setStatus(text: string) {
 let rendering: Promise<unknown> = Promise.resolve()
 async function pushFrame(bytes: Uint8Array) {
   rendering = rendering.then(async () => {
+    const validation = assertPayloadSize(bytes, { context: 'image frame' })
+    if (validation.warnings.length > 0) {
+      await setStatus(`Frame: ${validation.chunkCount} BLE chunks`)
+      console.warn(validatePayload(bytes, { context: 'image frame' }).warnings.join('; '))
+    }
     const result = await bridge.updateImageRawData(
       new ImageRawDataUpdate({
         containerID: 3,
