@@ -56,3 +56,18 @@ export type {
   G2Pixels,
   G2Rect,
 } from './container-constraints';
+
+export {
+  BLE_ATT_MTU,
+  BLE_COMMAND_OVERHEAD_BYTES,
+  BLE_PAYLOAD_MTU,
+  BLE_MAX_PAYLOAD_BYTES,
+  payloadByteLength,
+  toUint8Array,
+  chunkBytes,
+  chunkText,
+  validatePayload,
+  assertPayloadSize,
+} from './mtu';
+
+export type { PayloadValidation, PayloadValidationOptions } from './mtu';

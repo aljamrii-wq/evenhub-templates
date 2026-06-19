@@ -26,6 +26,7 @@ import {
   type ContainerID,
   type G2Rect,
 } from './container-constraints';
+import { assertPayloadSize } from './mtu';
 
 import type { AuraConfig, AuraMode, Language, HermesMessage, AuraResponse, GestureEvent, ModeContext } from './types';
 import { PROTOCOL_VERSION } from './types';
@@ -253,6 +254,7 @@ export class Aura {
     if (language === 'ar' || language === 'ur' || language === 'fa') {
       // Render as image for RTL/connected scripts
       const pixels = await this.arabic.render(text, undefined, language);
+      assertPayloadSize(pixels, { context: 'Arabic render bitmap' });
       const update = new ImageRawDataUpdate({
         containerID: 2,
         containerName: 'aura-img',
